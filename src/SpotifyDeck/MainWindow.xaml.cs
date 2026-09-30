@@ -254,7 +254,7 @@ public partial class MainWindow : Window
             }
 
             UpdateConnectionUi(true);
-            await _spotify.EnsureRunningHiddenAsync();
+            await _spotify.EnsureRunningAsync();
             await RefreshSpotifyUiAsync();
         }
         catch (Exception ex)
@@ -457,14 +457,13 @@ public partial class MainWindow : Window
 
         try
         {
-            await _spotify.EnsureRunningHiddenAsync();
+            await _spotify.EnsureRunningAsync();
             var ok = await _spotifyApi.PlayAsync(item);
 
             if (ok)
             {
-                Hide();
-                SearchBox.Clear();
-                Results.Clear();
+                StatusText.Text = $"Lecture lancée · {item.Name}";
+                await RefreshPlaybackAsync();
                 return;
             }
 
@@ -554,7 +553,7 @@ public partial class MainWindow : Window
 
         try
         {
-            await _spotify.EnsureRunningHiddenAsync();
+            await _spotify.EnsureRunningAsync();
             var ok = await action();
 
             StatusText.Text = ok
