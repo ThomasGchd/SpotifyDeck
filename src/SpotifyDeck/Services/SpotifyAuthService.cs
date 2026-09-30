@@ -1,10 +1,12 @@
 using System.IO;
 using System.Diagnostics;
 using System.Net;
+using System.Net.Sockets;
 using System.Net.Http;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using Microsoft.AspNetCore.WebUtilities;
 
 namespace SpotifyDeck.Services;
 
@@ -73,9 +75,15 @@ public sealed class SpotifyAuthService
         var challenge = Base64Url(SHA256.HashData(Encoding.ASCII.GetBytes(verifier)));
         var state = Base64Url(RandomNumberGenerator.GetBytes(24));
 
-        using var listener = new HttpListener();
-        listener.Prefixes.Add(RedirectUri);
-        listener.Start();
+        using var listener = new TcpListener(IPAddress.Loopback, 43821);
+        try
+        {
+            listener.Start();
+        }
+        catch (SocketException)
+        {
+            return new(false, "Le port de connexion Spotify est déjà utilisé. Ferme l'autre instance puis réessaie.");
+        }
 
         var query = new Dictionary<string, string>
         {
@@ -95,32 +103,65 @@ public sealed class SpotifyAuthService
         Process.Start(new ProcessStartInfo(authUrl) { UseShellExecute = true });
 
         using var timeout = new CancellationTokenSource(TimeSpan.FromMinutes(3));
-        HttpListenerContext context;
+        TcpClient client;
         try
         {
-            context = await listener.GetContextAsync().WaitAsync(timeout.Token);
+            client = await listener.AcceptTcpClientAsync(timeout.Token);
         }
         catch
         {
             return new(false, "Connexion Spotify annulée ou expirée.");
         }
+        finally
+        {
+            listener.Stop();
+        }
 
-        var code = context.Request.QueryString["code"];
-        var returnedState = context.Request.QueryString["state"];
-        var error = context.Request.QueryString["error"];
+        using (client)
+        using (var stream = client.GetStream())
+        using (var reader = new StreamReader(stream, Encoding.ASCII, false, 4096, leaveOpen: true))
+        {
+            var requestLine = await reader.ReadLineAsync(timeout.Token);
+            if (string.IsNullOrWhiteSpace(requestLine))
+                return new(false, "Réponse Spotify invalide.");
 
-        const string page = "<html><body style='font-family:Segoe UI;background:#111;color:#fff;padding:40px'><h2>SpotifyDeck</h2><p>Connexion terminee. Tu peux fermer cet onglet et revenir a SpotifyDeck.</p></body></html>";
-        var bytes = Encoding.UTF8.GetBytes(page);
-        context.Response.ContentType = "text/html; charset=utf-8";
-        context.Response.ContentLength64 = bytes.Length;
-        await context.Response.OutputStream.WriteAsync(bytes);
-        context.Response.Close();
+            var parts = requestLine.Split(' ');
+            if (parts.Length < 2)
+                return new(false, "Réponse Spotify invalide.");
 
-        if (!string.IsNullOrWhiteSpace(error))
-            return new(false, $"Spotify a refusé la connexion : {error}.");
-        if (returnedState != state || string.IsNullOrWhiteSpace(code))
-            return new(false, "Réponse Spotify invalide.");
+            var callbackUri = new Uri($"http://127.0.0.1{parts[1]}");
+            var callbackQuery = QueryHelpers.ParseQuery(callbackUri.Query);
 
+            var code = callbackQuery.TryGetValue("code", out var codeValue)
+                ? codeValue.ToString()
+                : null;
+            var returnedState = callbackQuery.TryGetValue("state", out var stateValue)
+                ? stateValue.ToString()
+                : null;
+            var error = callbackQuery.TryGetValue("error", out var errorValue)
+                ? errorValue.ToString()
+                : null;
+
+            const string page = "<html><body style='font-family:Segoe UI;background:#111;color:#fff;padding:40px'><h2>SpotifyDeck</h2><p>Connexion terminee. Tu peux fermer cet onglet et revenir a SpotifyDeck.</p></body></html>";
+            var body = Encoding.UTF8.GetBytes(page);
+            var headers = Encoding.ASCII.GetBytes(
+                $"HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: {body.Length}\r\nConnection: close\r\n\r\n");
+            await stream.WriteAsync(headers, timeout.Token);
+            await stream.WriteAsync(body, timeout.Token);
+            await stream.FlushAsync(timeout.Token);
+
+            if (!string.IsNullOrWhiteSpace(error))
+                return new(false, $"Spotify a refusé la connexion : {error}.");
+            if (returnedState != state || string.IsNullOrWhiteSpace(code))
+                return new(false, "Réponse Spotify invalide.");
+
+            return await ExchangeCodeAsync(code, verifier);
+        }
+
+    }
+
+    private async Task<SpotifyAuthResult> ExchangeCodeAsync(string code, string verifier)
+    {
         using var response = await _http.PostAsync(
             "https://accounts.spotify.com/api/token",
             new FormUrlEncodedContent(new Dictionary<string, string>
