@@ -38,6 +38,7 @@ public partial class MainWindow : Window
 
     private int _registeredHotkeyId;
     private int _searchVersion;
+    private bool _isShuttingDown;
     private string _hotkeyLabel = "Ctrl + Alt + M";
     private System.Windows.Forms.NotifyIcon? _trayIcon;
 
@@ -72,6 +73,7 @@ public partial class MainWindow : Window
         };
 
         PreviewKeyDown += MainWindow_PreviewKeyDown;
+        Closing += MainWindow_Closing;
 
         _settings = _settingsService.Load();
         ComponentDispatcher.ThreadFilterMessage += OnThreadFilterMessage;
@@ -291,6 +293,7 @@ public partial class MainWindow : Window
                 return;
             }
 
+            _isShuttingDown = true;
             System.Windows.Application.Current.Shutdown();
         }
         finally
@@ -525,6 +528,17 @@ public partial class MainWindow : Window
             : $"Connecte Spotify une fois · raccourci : {_hotkeyLabel}.";
     }
 
+    private void MainWindow_Closing(object? sender, System.ComponentModel.CancelEventArgs e)
+    {
+        if (_isShuttingDown)
+            return;
+
+        // SpotifyDeck lives in the tray. Alt+F4 should hide the overlay rather
+        // than destroy the only window and leave an unusable tray process.
+        e.Cancel = true;
+        Hide();
+    }
+
     private void MainWindow_PreviewKeyDown(object sender, System.Windows.Input.KeyEventArgs e)
     {
         if (e.Key == Key.Escape)
@@ -580,6 +594,8 @@ public partial class MainWindow : Window
 
     private async Task ShutdownAsync()
     {
+        _isShuttingDown = true;
+
         if (_registeredHotkeyId != 0)
             UnregisterHotKey(IntPtr.Zero, _registeredHotkeyId);
 
