@@ -206,12 +206,38 @@
                 </Grid>
             </Grid>
 
-            <TextBlock x:Name="StatusText"
-                       Grid.Row="5"
-                       Margin="0,14,0,0"
-                       Foreground="#777"
-                       FontSize="11"
-                       Text="SpotifyDeck prêt. · Entrée : lire sur Spotify"/>
+            <Grid Grid.Row="5" Margin="0,14,0,0">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+
+                <TextBlock x:Name="StatusText"
+                           VerticalAlignment="Center"
+                           Foreground="#777"
+                           FontSize="11"
+                           Text="SpotifyDeck prêt. · Entrée : lire sur Spotify"/>
+
+                <StackPanel Grid.Column="1" Orientation="Horizontal">
+                    <Button x:Name="PreviousButton"
+                            Width="38" Height="30"
+                            Margin="0,0,6,0"
+                            Click="PreviousButton_Click"
+                            Content="⏮"
+                            ToolTip="Précédent"/>
+                    <Button x:Name="ToggleButton"
+                            Width="38" Height="30"
+                            Margin="0,0,6,0"
+                            Click="ToggleButton_Click"
+                            Content="⏯"
+                            ToolTip="Lecture / Pause"/>
+                    <Button x:Name="NextButton"
+                            Width="38" Height="30"
+                            Click="NextButton_Click"
+                            Content="⏭"
+                            ToolTip="Suivant"/>
+                </StackPanel>
+            </Grid>
         </Grid>
     </Border>
 </Window>
