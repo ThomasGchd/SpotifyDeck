@@ -33,6 +33,14 @@ jobs:
             -p:Version=$version `
             -o publish
 
+      - name: Inject Spotify public client id
+        shell: pwsh
+        run: |
+          $clientId = "${{ vars.SPOTIFY_CLIENT_ID }}"
+          if (![string]::IsNullOrWhiteSpace($clientId)) {
+            Set-Content -Path publish\spotify-client-id.txt -Value $clientId -NoNewline
+          }
+
       - name: Package portable updater payload
         shell: pwsh
         run: |
