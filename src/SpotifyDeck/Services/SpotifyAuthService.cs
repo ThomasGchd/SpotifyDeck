@@ -1,8 +1,8 @@
-using System.IO;
 using System.Diagnostics;
+using System.IO;
 using System.Net;
-using System.Net.Sockets;
 using System.Net.Http;
+using System.Net.Sockets;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -12,25 +12,38 @@ namespace SpotifyDeck.Services;
 
 public sealed class SpotifyAuthService
 {
-    private const string RedirectUri = "http://127.0.0.1:43821/callback/";
-    public string ClientId { get; } = ResolveClientId();
+    public const string RedirectUri = "http://127.0.0.1:43821/callback/";
+
     private static readonly string[] Scopes =
     [
         "playlist-read-private",
         "playlist-read-collaborative",
         "user-read-playback-state",
+        "user-read-currently-playing",
         "user-modify-playback-state",
         "user-read-recently-played"
     ];
 
     private readonly HttpClient _http = new();
     private readonly SpotifyTokenStore _store = new();
+    private string _clientId = ResolveBundledClientId();
 
-    public bool IsConfigured => !string.IsNullOrWhiteSpace(ClientId);
-    public bool HasSession => _store.Load() is not null;
+    public string ClientId => _clientId;
+    public bool IsConfigured => !string.IsNullOrWhiteSpace(_clientId);
+    public bool HasSession => IsConfigured && _store.Load() is not null;
+
+    public void SetClientId(string? clientId)
+    {
+        _clientId = string.IsNullOrWhiteSpace(clientId)
+            ? ResolveBundledClientId()
+            : clientId.Trim();
+    }
 
     public async Task<string?> GetAccessTokenAsync()
     {
+        if (!IsConfigured)
+            return null;
+
         var token = _store.Load();
         if (token is null) return null;
 
@@ -38,7 +51,10 @@ public sealed class SpotifyAuthService
             return token.AccessToken;
 
         if (string.IsNullOrWhiteSpace(token.RefreshToken))
+        {
+            _store.Clear();
             return null;
+        }
 
         using var response = await _http.PostAsync(
             "https://accounts.spotify.com/api/token",
@@ -46,10 +62,17 @@ public sealed class SpotifyAuthService
             {
                 ["grant_type"] = "refresh_token",
                 ["refresh_token"] = token.RefreshToken,
-                ["client_id"] = ClientId
+                ["client_id"] = _clientId
             }));
 
-        if (!response.IsSuccessStatusCode) return null;
+        if (!response.IsSuccessStatusCode)
+        {
+            var body = await response.Content.ReadAsStringAsync();
+            await AppLog.WriteAsync("spotify-auth-refresh", $"{(int)response.StatusCode} {response.StatusCode}: {body}");
+            _store.Clear();
+            return null;
+        }
+
         using var doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
         var root = doc.RootElement;
 
@@ -69,7 +92,7 @@ public sealed class SpotifyAuthService
     public async Task<SpotifyAuthResult> ConnectAsync()
     {
         if (!IsConfigured)
-            return new(false, "SpotifyDeck attend encore son Client ID Spotify officiel.");
+            return new(false, "Configure d'abord le Client ID Spotify.");
 
         var verifier = Base64Url(RandomNumberGenerator.GetBytes(64));
         var challenge = Base64Url(SHA256.HashData(Encoding.ASCII.GetBytes(verifier)));
@@ -82,12 +105,12 @@ public sealed class SpotifyAuthService
         }
         catch (SocketException)
         {
-            return new(false, "Le port de connexion Spotify est déjà utilisé. Ferme l'autre instance puis réessaie.");
+            return new(false, "Le port de connexion Spotify est déjà utilisé.");
         }
 
         var query = new Dictionary<string, string>
         {
-            ["client_id"] = ClientId,
+            ["client_id"] = _clientId,
             ["response_type"] = "code",
             ["redirect_uri"] = RedirectUri,
             ["code_challenge_method"] = "S256",
@@ -100,7 +123,15 @@ public sealed class SpotifyAuthService
             string.Join("&", query.Select(x =>
                 $"{Uri.EscapeDataString(x.Key)}={Uri.EscapeDataString(x.Value)}"));
 
-        Process.Start(new ProcessStartInfo(authUrl) { UseShellExecute = true });
+        try
+        {
+            Process.Start(new ProcessStartInfo(authUrl) { UseShellExecute = true });
+        }
+        catch (Exception ex)
+        {
+            await AppLog.WriteAsync("spotify-auth-browser", ex);
+            return new(false, "Impossible d'ouvrir le navigateur.");
+        }
 
         using var timeout = new CancellationTokenSource(TimeSpan.FromMinutes(3));
         TcpClient client;
@@ -108,9 +139,14 @@ public sealed class SpotifyAuthService
         {
             client = await listener.AcceptTcpClientAsync(timeout.Token);
         }
-        catch
+        catch (OperationCanceledException)
         {
-            return new(false, "Connexion Spotify annulée ou expirée.");
+            return new(false, "Connexion Spotify expirée.");
+        }
+        catch (Exception ex)
+        {
+            await AppLog.WriteAsync("spotify-auth-callback", ex);
+            return new(false, "La réponse Spotify n'a pas pu être reçue.");
         }
         finally
         {
@@ -142,8 +178,8 @@ public sealed class SpotifyAuthService
                 ? errorValue.ToString()
                 : null;
 
-            const string page = "<html><body style='font-family:Segoe UI;background:#111;color:#fff;padding:40px'><h2>SpotifyDeck</h2><p>Connexion terminee. Tu peux fermer cet onglet et revenir a SpotifyDeck.</p></body></html>";
-            var body = Encoding.UTF8.GetBytes(page);
+            var okPage = "<html><body style='font-family:Segoe UI;background:#111;color:#fff;padding:40px'><h2>SpotifyDeck</h2><p>Connexion terminée. Tu peux fermer cet onglet.</p></body></html>";
+            var body = Encoding.UTF8.GetBytes(okPage);
             var headers = Encoding.ASCII.GetBytes(
                 $"HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: {body.Length}\r\nConnection: close\r\n\r\n");
             await stream.WriteAsync(headers, timeout.Token);
@@ -157,7 +193,6 @@ public sealed class SpotifyAuthService
 
             return await ExchangeCodeAsync(code, verifier);
         }
-
     }
 
     private async Task<SpotifyAuthResult> ExchangeCodeAsync(string code, string verifier)
@@ -169,14 +204,20 @@ public sealed class SpotifyAuthService
                 ["grant_type"] = "authorization_code",
                 ["code"] = code,
                 ["redirect_uri"] = RedirectUri,
-                ["client_id"] = ClientId,
+                ["client_id"] = _clientId,
                 ["code_verifier"] = verifier
             }));
 
+        var responseBody = await response.Content.ReadAsStringAsync();
         if (!response.IsSuccessStatusCode)
-            return new(false, $"Spotify n'a pas délivré de jeton ({(int)response.StatusCode}).");
+        {
+            await AppLog.WriteAsync(
+                "spotify-auth-token",
+                $"{(int)response.StatusCode} {response.StatusCode}: {responseBody}");
+            return new(false, $"Spotify n'a pas accepté la connexion ({(int)response.StatusCode}).");
+        }
 
-        using var doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        using var doc = JsonDocument.Parse(responseBody);
         var root = doc.RootElement;
         _store.Save(new SpotifyToken(
             root.GetProperty("access_token").GetString() ?? "",
@@ -188,7 +229,7 @@ public sealed class SpotifyAuthService
 
     public void Disconnect() => _store.Clear();
 
-    private static string ResolveClientId()
+    private static string ResolveBundledClientId()
     {
         var fromEnvironment = Environment.GetEnvironmentVariable("SPOTIFYDECK_CLIENT_ID");
         if (!string.IsNullOrWhiteSpace(fromEnvironment))
