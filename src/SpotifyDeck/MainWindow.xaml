@@ -9,6 +9,50 @@
         Background="Transparent"
         ShowInTaskbar="False"
         Topmost="True">
+    <Window.Resources>
+        <Style TargetType="Button">
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="Background" Value="#262626"/>
+            <Setter Property="BorderBrush" Value="#3A3A3A"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Chrome"
+                                CornerRadius="9"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center"
+                                              VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Chrome" Property="Background" Value="#343434"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="Chrome" Property="Background" Value="#1B1B1B"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="Chrome" Property="Opacity" Value="0.38"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style TargetType="ListBoxItem">
+            <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+            <Setter Property="Padding" Value="0"/>
+            <Setter Property="Margin" Value="0"/>
+            <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+        </Style>
+    </Window.Resources>
+
     <Border CornerRadius="24"
             BorderBrush="#2F2F2F"
             BorderThickness="1"
@@ -62,17 +106,24 @@
                 </StackPanel>
             </Grid>
 
-            <TextBox x:Name="SearchBox"
-                     Grid.Row="2"
-                     Height="46"
-                     Padding="14,10"
-                     FontSize="16"
-                     Foreground="White"
-                     Background="#252525"
-                     BorderBrush="#3A3A3A"
-                     CaretBrush="White"
-                     TextChanged="SearchBox_TextChanged"
-                     KeyDown="SearchBox_KeyDown"/>
+            <Border Grid.Row="2"
+                    Height="46"
+                    CornerRadius="13"
+                    Background="#252525"
+                    BorderBrush="#3A3A3A"
+                    BorderThickness="1">
+                <TextBox x:Name="SearchBox"
+                         Padding="14,9"
+                         FontSize="16"
+                         Foreground="White"
+                         Background="Transparent"
+                         BorderThickness="0"
+                         CaretBrush="White"
+                         VerticalContentAlignment="Center"
+                         ToolTip="Titre, artiste ou playlist"
+                         TextChanged="SearchBox_TextChanged"
+                         KeyDown="SearchBox_KeyDown"/>
+            </Border>
 
             <Grid Grid.Row="4">
                 <Grid.ColumnDefinitions>
