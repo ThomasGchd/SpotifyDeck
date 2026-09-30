@@ -67,6 +67,12 @@ public sealed class SpicetifyBridgeService : IAsyncDisposable
         return DeserializeItems(data);
     }
 
+    public async Task<IReadOnlyList<SpotifyItem>> GetRecentAsync()
+    {
+        var data = await SendAsync("recent", new { });
+        return DeserializeItems(data);
+    }
+
     public async Task<bool> PlayAsync(SpotifyItem item)
     {
         var data = await SendAsync("play", new { uri = item.Uri, type = item.Type });
