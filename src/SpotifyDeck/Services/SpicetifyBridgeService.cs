@@ -100,6 +100,15 @@ public sealed class SpicetifyBridgeService : IAsyncDisposable
         return IsOk(data);
     }
 
+    public async Task<string?> GetDiagnosticsAsync()
+    {
+        var data = await SendAsync("diagnostics", new { });
+        ThrowIfBridgeError("diagnostics", data);
+        return data?.ValueKind == JsonValueKind.Object
+            ? data.Value.GetRawText()
+            : null;
+    }
+
     public async Task<SpotifyPlaybackState?> GetPlaybackStateAsync()
     {
         var data = await SendAsync("state", new { });
