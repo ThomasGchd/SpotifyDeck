@@ -24,7 +24,7 @@ public partial class SpotifySetupWindow : Window
 
     private void CopyRedirect_Click(object sender, RoutedEventArgs e)
     {
-        Clipboard.SetText(RedirectBox.Text);
+        System.Windows.Clipboard.SetText(RedirectBox.Text);
         HintText.Text = "URI copiée.";
     }
 
