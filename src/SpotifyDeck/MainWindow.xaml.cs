@@ -79,8 +79,16 @@ public partial class MainWindow : Window
 
     public async Task InitializeAsync()
     {
-        await _bridge.StartAsync();
-        UpdateConnectionUi(_bridge.IsConnected);
+        try
+        {
+            await _bridge.StartAsync();
+            UpdateConnectionUi(_bridge.IsConnected);
+        }
+        catch (Exception ex)
+        {
+            StatusText.Text = "SpotifyDeck est ouvert, mais le bridge Spotify n'a pas pu démarrer.";
+            await AppLog.WriteAsync("bridge-startup", ex);
+        }
     }
 
     private IntPtr WndProc(
