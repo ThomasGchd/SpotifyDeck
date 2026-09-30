@@ -81,9 +81,13 @@ public partial class MainWindow : Window
     public async Task InitializeAsync()
     {
         // Official Spotify OAuth/Web API is the production path.
-        // Keep the local bridge alive only as a development fallback.
+        // Keep the local bridge alive as the current working fallback while OAuth
+        // is not configured in release builds.
         try
         {
+            if (!_spotifyAuth.HasSession && _installer.IsInstalled())
+                await _installer.EnsureInstalledAsync();
+
             await _bridge.StartAsync();
         }
         catch (Exception ex)
@@ -92,7 +96,7 @@ public partial class MainWindow : Window
         }
 
         UpdateConnectionUi(_spotifyAuth.HasSession || _bridge.IsConnected);
-        if (_spotifyAuth.HasSession)
+        if (_spotifyAuth.HasSession || _bridge.IsConnected)
             await LoadQuickAccessAsync();
     }
 
