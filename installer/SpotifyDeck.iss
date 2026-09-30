@@ -36,5 +36,8 @@ Name: "{userdesktop}\SpotifyDeck"; Filename: "{app}\{#MyAppExeName}"; Tasks: des
 [Tasks]
 Name: "desktopicon"; Description: "Créer un raccourci sur le Bureau"; GroupDescription: "Raccourcis :"; Flags: unchecked
 
+[Registry]
+Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueName: "SpotifyDeck"; Flags: uninsdeletevalue dontcreatekey
+
 [Run]
 Filename: "{app}\{#MyAppExeName}"; Description: "Lancer SpotifyDeck"; Flags: nowait postinstall skipifsilent
