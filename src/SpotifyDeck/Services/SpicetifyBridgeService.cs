@@ -88,7 +88,7 @@ public sealed class SpicetifyBridgeService : IAsyncDisposable
         await _socket.SendAsync(bytes, WebSocketMessageType.Text, true, CancellationToken.None);
 
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(8));
-        await using var _ = timeout.Token.Register(() => tcs.TrySetCanceled(timeout.Token));
+        using var registration = timeout.Token.Register(() => tcs.TrySetCanceled(timeout.Token));
 
         try
         {
@@ -112,7 +112,7 @@ public sealed class SpicetifyBridgeService : IAsyncDisposable
 
             do
             {
-                result = await socket.ReceiveAsync(buffer, CancellationToken.None);
+                result = await socket.ReceiveAsync(new ArraySegment<byte>(buffer), CancellationToken.None);
                 if (result.MessageType == WebSocketMessageType.Close)
                 {
                     await socket.CloseAsync(WebSocketCloseStatus.NormalClosure, "bye", CancellationToken.None);
