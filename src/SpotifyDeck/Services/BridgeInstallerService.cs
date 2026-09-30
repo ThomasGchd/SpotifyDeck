@@ -24,8 +24,6 @@ public sealed class BridgeInstallerService
         {
             Directory.CreateDirectory(Path.GetDirectoryName(TargetPath)!);
 
-            // Avoid restarting/reapplying Spicetify on every SpotifyDeck launch.
-            // Re-apply only when the bundled bridge actually changed.
             if (File.Exists(TargetPath) && FilesMatch(source, TargetPath))
                 return true;
 
@@ -37,10 +35,59 @@ public sealed class BridgeInstallerService
             return false;
         }
 
-        if (!await RunSpicetifyAsync($"config extensions {_extensionName}"))
+        var executable = FindSpicetifyExecutable();
+        if (executable is null)
+        {
+            // The extension file has still been refreshed. Existing Spicetify
+            // installs may already have it enabled, but Spotify must be
+            // restarted before the new JS is loaded.
+            await AppLog.WriteAsync(
+                "spicetify",
+                "Spicetify executable not found. Bridge file updated but could not run config/apply.");
+            return IsInstalled();
+        }
+
+        if (!await RunSpicetifyAsync(executable, $"config extensions {_extensionName}"))
             return false;
 
-        return await RunSpicetifyAsync("apply");
+        return await RunSpicetifyAsync(executable, "apply");
+    }
+
+    private static string? FindSpicetifyExecutable()
+    {
+        var candidates = new[]
+        {
+            Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
+                "spicetify-cli", "spicetify.exe"),
+            Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
+                ".spicetify", "spicetify.exe"),
+            Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "spicetify", "spicetify.exe"),
+            Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+                "spicetify", "spicetify.exe")
+        };
+
+        var direct = candidates.FirstOrDefault(File.Exists);
+        if (direct is not null)
+            return direct;
+
+        var path = Environment.GetEnvironmentVariable("PATH") ?? "";
+        foreach (var directory in path.Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries))
+        {
+            try
+            {
+                var candidate = Path.Combine(directory.Trim(), "spicetify.exe");
+                if (File.Exists(candidate))
+                    return candidate;
+            }
+            catch { }
+        }
+
+        return null;
     }
 
     private static bool FilesMatch(string left, string right)
@@ -61,13 +108,13 @@ public sealed class BridgeInstallerService
         }
     }
 
-    private static async Task<bool> RunSpicetifyAsync(string arguments)
+    private static async Task<bool> RunSpicetifyAsync(string executable, string arguments)
     {
         try
         {
             using var process = Process.Start(new ProcessStartInfo
             {
-                FileName = "spicetify",
+                FileName = executable,
                 Arguments = arguments,
                 UseShellExecute = false,
                 CreateNoWindow = true,
