@@ -41,12 +41,19 @@
                                FontSize="12"/>
                 </StackPanel>
 
-                <Button x:Name="ConnectButton"
-                        Grid.Column="1"
-                        Padding="16,9"
-                        VerticalAlignment="Center"
-                        Click="ConnectButton_Click"
-                        Content="Connecter Spotify"/>
+                <StackPanel Grid.Column="1"
+                            Orientation="Horizontal"
+                            VerticalAlignment="Center">
+                    <Button x:Name="UpdateButton"
+                            Padding="12,9"
+                            Margin="0,0,8,0"
+                            Click="UpdateButton_Click"
+                            Content="Mise à jour"/>
+                    <Button x:Name="ConnectButton"
+                            Padding="16,9"
+                            Click="ConnectButton_Click"
+                            Content="Connecter Spotify"/>
+                </StackPanel>
             </Grid>
 
             <TextBox x:Name="SearchBox"
