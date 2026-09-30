@@ -7,9 +7,14 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <AssemblyName>SpotifyDeck</AssemblyName>
-    <RootNamespace>SpotifyDeck</RootNamespace>\n    <Version>0.1.0</Version>
+    <RootNamespace>SpotifyDeck</RootNamespace>
+    <Version>0.1.0</Version>
   </PropertyGroup>
   <ItemGroup>
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <Content Include="..\..\bridge\spotifydeck-bridge.js">
+      <Link>bridge\spotifydeck-bridge.js</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
   </ItemGroup>
 </Project>
