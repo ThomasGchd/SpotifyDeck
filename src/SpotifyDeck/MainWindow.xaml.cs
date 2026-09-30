@@ -40,6 +40,7 @@ public partial class MainWindow : Window
     private System.Windows.Forms.NotifyIcon? _trayIcon;
 
     public ObservableCollection<SpotifyItem> Results { get; } = [];
+    public ObservableCollection<SpotifyItem> Recent { get; } = [];
     public ObservableCollection<SpotifyItem> Playlists { get; } = [];
 
     public MainWindow()
@@ -48,6 +49,7 @@ public partial class MainWindow : Window
         _spotifyApi = new SpotifyApiService(_spotifyAuth);
 
         ResultsList.ItemsSource = Results;
+        RecentList.ItemsSource = Recent;
         PlaylistsList.ItemsSource = Playlists;
 
         _searchTimer = new DispatcherTimer
@@ -62,16 +64,11 @@ public partial class MainWindow : Window
             {
                 UpdateConnectionUi(connected);
                 if (connected)
-                    await LoadPlaylistsAsync();
+                    await LoadQuickAccessAsync();
             });
         };
 
         PreviewKeyDown += MainWindow_PreviewKeyDown;
-        Deactivated += (_, _) =>
-        {
-            if (IsVisible)
-                Hide();
-        };
 
         _settings = _settingsService.Load();
         ComponentDispatcher.ThreadFilterMessage += OnThreadFilterMessage;
@@ -94,7 +91,7 @@ public partial class MainWindow : Window
 
         UpdateConnectionUi(_spotifyAuth.HasSession || _bridge.IsConnected);
         if (_spotifyAuth.HasSession)
-            await LoadPlaylistsAsync();
+            await LoadQuickAccessAsync();
     }
 
     private bool RegisterGlobalHotkey(string shortcut)
@@ -190,7 +187,7 @@ public partial class MainWindow : Window
         }
 
         await _spotify.EnsureRunningHiddenAsync();
-        await LoadPlaylistsAsync();
+        await LoadQuickAccessAsync();
     }
 
     private void PositionOverlay()
@@ -217,7 +214,7 @@ public partial class MainWindow : Window
             {
                 UpdateConnectionUi(true);
                 await _spotify.EnsureRunningHiddenAsync();
-                await LoadPlaylistsAsync();
+                await LoadQuickAccessAsync();
             }
             else
             {
@@ -249,7 +246,7 @@ public partial class MainWindow : Window
 
         UpdateConnectionUi(_bridge.IsConnected);
         if (_bridge.IsConnected)
-            await LoadPlaylistsAsync();
+            await LoadQuickAccessAsync();
     }
 
     private async void UpdateButton_Click(object sender, RoutedEventArgs e)
@@ -361,6 +358,12 @@ public partial class MainWindow : Window
         }
     }
 
+    private async void RecentList_MouseDoubleClick(object sender, MouseButtonEventArgs e)
+    {
+        if (RecentList.SelectedItem is SpotifyItem item)
+            await PlayAsync(item);
+    }
+
     private async void PlaylistsList_MouseDoubleClick(object sender, MouseButtonEventArgs e)
     {
         if (PlaylistsList.SelectedItem is SpotifyItem item)
@@ -387,17 +390,33 @@ public partial class MainWindow : Window
         }
     }
 
-    private async Task LoadPlaylistsAsync()
+    private async Task LoadQuickAccessAsync()
     {
         if (!_spotifyAuth.HasSession && !_bridge.IsConnected)
             return;
 
+        await Task.WhenAll(LoadRecentAsync(), LoadPlaylistsAsync());
+    }
+
+    private async Task LoadRecentAsync()
+    {
+        var recent = _spotifyAuth.HasSession
+            ? await _spotifyApi.GetRecentAsync()
+            : await _bridge.GetRecentAsync();
+
+        Recent.Clear();
+        foreach (var item in recent.Take(4))
+            Recent.Add(item);
+    }
+
+    private async Task LoadPlaylistsAsync()
+    {
         var playlists = _spotifyAuth.HasSession
             ? await _spotifyApi.GetPlaylistsAsync()
             : await _bridge.GetPlaylistsAsync();
 
         Playlists.Clear();
-        foreach (var playlist in playlists.Take(12))
+        foreach (var playlist in playlists.Take(5))
             Playlists.Add(playlist);
     }
 
