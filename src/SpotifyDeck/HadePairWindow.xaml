@@ -1,0 +1,40 @@
+<Window x:Class="SpotifyDeck.HadePairWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Connecter Hade"
+        Width="430" Height="260"
+        WindowStartupLocation="CenterOwner"
+        ResizeMode="NoResize"
+        Background="#171717"
+        Foreground="White">
+    <Grid Margin="22">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="16"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="10"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="16"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+
+        <StackPanel>
+            <TextBlock Text="Connecter Hade" FontSize="22" FontWeight="SemiBold"/>
+            <TextBlock Text="Entre l'adresse du bridge Hade et le code temporaire donné par le bot."
+                       Margin="0,5,0,0" Foreground="#999" TextWrapping="Wrap"/>
+        </StackPanel>
+
+        <TextBox x:Name="BaseUrlBox" Grid.Row="2" Height="34" Padding="8"
+                 Text="http://127.0.0.1:5545"/>
+        <TextBox x:Name="CodeBox" Grid.Row="4" Height="34" Padding="8"/>
+
+        <StackPanel Grid.Row="6" Orientation="Horizontal" HorizontalAlignment="Right">
+            <Button Content="Annuler" Width="85" Margin="0,0,8,0" Click="Cancel_Click"/>
+            <Button x:Name="PairButton" Content="Connecter" Width="95" Click="Pair_Click"/>
+        </StackPanel>
+
+        <TextBlock x:Name="StatusText" Grid.Row="7" Margin="0,12,0,0"
+                   Foreground="#999" TextWrapping="Wrap"/>
+    </Grid>
+</Window>
