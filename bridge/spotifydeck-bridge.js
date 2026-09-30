@@ -1,11 +1,12 @@
 (function spotifyDeckBridge() {
-    if (!window.Spicetify?.CosmosAsync || !window.Spicetify?.Player) {
+    if (!window.Spicetify?.Player) {
         setTimeout(spotifyDeckBridge, 300);
         return;
     }
 
     let socket;
     let reconnectTimer;
+    const RECENT_KEY = "spotifydeck:recent-v2";
 
     const send = (message) => {
         if (socket?.readyState === WebSocket.OPEN) {
@@ -13,62 +14,215 @@
         }
     };
 
-    const resultItem = (item, type) => ({
-        id: item.id ?? "",
-        name: item.name ?? "",
+    const imageUrl = (value) => {
+        if (!value) return null;
+        if (/^https?:\/\//i.test(value)) return value;
+
+        const hash = String(value).substring(String(value).lastIndexOf(":") + 1);
+        return hash && !String(value).includes("localfile")
+            ? `https://i.scdn.co/image/${hash}`
+            : null;
+    };
+
+    const uriId = (uri) => String(uri ?? "").split(":").pop() ?? "";
+
+    const playerItem = () => {
+        const data = Spicetify.Player?.data;
+        const item = data?.item;
+        const meta = item?.metadata ?? {};
+
+        if (!item?.uri) return null;
+
+        let artist = meta.artist_name ?? "";
+        let index = 1;
+        while (meta[`artist_name:${index}`]) {
+            artist += artist ? `, ${meta[`artist_name:${index}`]}` : meta[`artist_name:${index}`];
+            index++;
+        }
+
+        return {
+            id: uriId(item.uri),
+            name: meta.title ?? item.name ?? "",
+            subtitle: artist || meta.album_title || "",
+            uri: item.uri,
+            type: "track",
+            imageUrl: imageUrl(meta.image_xlarge_url ?? meta.image_url ?? null)
+        };
+    };
+
+    const apiResultItem = (item, type) => ({
+        id: item?.id ?? uriId(item?.uri),
+        name: item?.name ?? "",
         subtitle: type === "track"
-            ? (item.artists ?? []).map(a => a.name).join(", ")
+            ? (item?.artists ?? []).map(a => a.name).join(", ")
             : "Playlist",
-        uri: item.uri ?? "",
+        uri: item?.uri ?? "",
         type,
         imageUrl: type === "track"
-            ? item.album?.images?.[0]?.url ?? null
-            : item.images?.[0]?.url ?? null
+            ? item?.album?.images?.[0]?.url ?? null
+            : item?.images?.[0]?.url ?? null
     });
+
+    const nativePlaylistItem = (item) => ({
+        id: uriId(item?.uri),
+        name: item?.name ?? item?.title ?? "Playlist",
+        subtitle: "Playlist",
+        uri: item?.uri ?? "",
+        type: "playlist",
+        imageUrl: imageUrl(item?.imageUrl ?? item?.image ?? item?.images?.[0]?.url ?? null)
+    });
+
+    const loadLocalRecent = () => {
+        try {
+            const parsed = JSON.parse(localStorage.getItem(RECENT_KEY) ?? "[]");
+            return Array.isArray(parsed) ? parsed : [];
+        } catch {
+            return [];
+        }
+    };
+
+    const rememberCurrentTrack = () => {
+        const current = playerItem();
+        if (!current?.uri) return;
+
+        const next = [current, ...loadLocalRecent().filter(x => x?.uri !== current.uri)].slice(0, 8);
+        try {
+            localStorage.setItem(RECENT_KEY, JSON.stringify(next));
+        } catch {}
+    };
+
+    const flattenRootlist = (items, output = []) => {
+        for (const item of items ?? []) {
+            if (!item) continue;
+
+            if (item.type === "playlist" || String(item.uri ?? "").startsWith("spotify:playlist:")) {
+                output.push(nativePlaylistItem(item));
+            }
+
+            if (Array.isArray(item.items))
+                flattenRootlist(item.items, output);
+        }
+
+        return output;
+    };
+
+    async function nativePlaylists() {
+        const api = Spicetify.Platform?.RootlistAPI;
+        if (!api?.getContents)
+            throw new Error("RootlistAPI unavailable");
+
+        const response = await api.getContents();
+        return flattenRootlist(response?.items ?? []).slice(0, 24);
+    }
+
+    async function webApiSearch(query) {
+        if (!Spicetify.CosmosAsync?.get)
+            throw new Error("CosmosAsync unavailable");
+
+        const q = encodeURIComponent(query);
+        const response = await Spicetify.CosmosAsync.get(
+            `https://api.spotify.com/v1/search?q=${q}&type=track,playlist&limit=8`
+        );
+
+        const tracks = (response?.tracks?.items ?? []).map(x => apiResultItem(x, "track"));
+        const playlists = (response?.playlists?.items ?? [])
+            .filter(Boolean)
+            .map(x => apiResultItem(x, "playlist"));
+
+        return [...tracks, ...playlists];
+    }
+
+    async function searchWithNativeFallback(query) {
+        // First try Spotify's authenticated Web API proxy. Some current
+        // Spotify/Spicetify builds no longer allow these calls, so failure is
+        // expected and must not break the rest of SpotifyDeck.
+        try {
+            const result = await webApiSearch(query);
+            if (result.length > 0)
+                return result;
+        } catch (error) {
+            console.warn("[SpotifyDeck] Web API search unavailable", error);
+        }
+
+        // Useful local fallback: playlists + current/recent tracks. This keeps
+        // search usable even when Spotify changes its internal Web API proxy.
+        const q = query.trim().toLocaleLowerCase();
+        const candidates = [];
+
+        try {
+            candidates.push(...await nativePlaylists());
+        } catch {}
+
+        const current = playerItem();
+        if (current) candidates.push(current);
+        candidates.push(...loadLocalRecent());
+
+        const seen = new Set();
+        return candidates
+            .filter(item => {
+                const haystack = `${item?.name ?? ""} ${item?.subtitle ?? ""}`.toLocaleLowerCase();
+                return haystack.includes(q);
+            })
+            .filter(item => {
+                const key = item?.uri ?? item?.id;
+                if (!key || seen.has(key)) return false;
+                seen.add(key);
+                return true;
+            })
+            .slice(0, 12);
+    }
 
     async function handle(message) {
         const { id, type, payload } = message;
 
         try {
             if (type === "search") {
-                const q = encodeURIComponent(payload?.query ?? "");
-                const response = await Spicetify.CosmosAsync.get(
-                    `https://api.spotify.com/v1/search?q=${q}&type=track,playlist&limit=8`
-                );
-
-                const tracks = (response?.tracks?.items ?? []).map(x => resultItem(x, "track"));
-                const playlists = (response?.playlists?.items ?? [])
-                    .filter(Boolean)
-                    .map(x => resultItem(x, "playlist"));
-
-                send({ id, data: [...tracks, ...playlists] });
+                const query = String(payload?.query ?? "").trim();
+                const results = query ? await searchWithNativeFallback(query) : [];
+                send({ id, data: results });
                 return;
             }
 
             if (type === "playlists") {
-                const response = await Spicetify.CosmosAsync.get(
-                    "https://api.spotify.com/v1/me/playlists?limit=16"
-                );
-                const playlists = (response?.items ?? [])
-                    .filter(Boolean)
-                    .map(x => resultItem(x, "playlist"));
+                let playlists = [];
+
+                try {
+                    playlists = await nativePlaylists();
+                } catch (nativeError) {
+                    console.warn("[SpotifyDeck] Native playlists unavailable", nativeError);
+
+                    if (Spicetify.CosmosAsync?.get) {
+                        const response = await Spicetify.CosmosAsync.get(
+                            "https://api.spotify.com/v1/me/playlists?limit=24"
+                        );
+                        playlists = (response?.items ?? [])
+                            .filter(Boolean)
+                            .map(x => apiResultItem(x, "playlist"));
+                    }
+                }
 
                 send({ id, data: playlists });
                 return;
             }
 
             if (type === "recent") {
-                const response = await Spicetify.CosmosAsync.get(
-                    "https://api.spotify.com/v1/me/player/recently-played?limit=8"
-                );
-                const seen = new Set();
-                const recent = [];
+                let recent = loadLocalRecent();
 
-                for (const entry of response?.items ?? []) {
-                    const track = entry?.track;
-                    if (!track?.id || seen.has(track.id)) continue;
-                    seen.add(track.id);
-                    recent.push(resultItem(track, "track"));
+                if (recent.length === 0 && Spicetify.CosmosAsync?.get) {
+                    try {
+                        const response = await Spicetify.CosmosAsync.get(
+                            "https://api.spotify.com/v1/me/player/recently-played?limit=8"
+                        );
+
+                        const seen = new Set();
+                        recent = [];
+                        for (const entry of response?.items ?? []) {
+                            const track = entry?.track;
+                            if (!track?.id || seen.has(track.id)) continue;
+                            seen.add(track.id);
+                            recent.push(apiResultItem(track, "track"));
+                        }
+                    } catch {}
                 }
 
                 send({ id, data: recent });
@@ -77,28 +231,19 @@
 
             if (type === "play") {
                 const uri = payload?.uri ?? "";
-                const itemType = payload?.type ?? "";
+                if (!uri)
+                    throw new Error("missing uri");
 
-                if (itemType === "track") {
-                    await Spicetify.Player.playUri(uri);
-                } else {
-                    await Spicetify.CosmosAsync.put(
-                        "https://api.spotify.com/v1/me/player/play",
-                        { context_uri: uri }
-                    );
-                }
-
+                await Spicetify.Player.playUri(uri);
                 send({ id, data: { ok: true } });
                 return;
             }
 
             if (type === "state") {
-                const response = await Spicetify.CosmosAsync.get(
-                    "https://api.spotify.com/v1/me/player/currently-playing"
-                );
-                const item = response?.item;
+                const current = playerItem();
+                const state = Spicetify.Player?.data;
 
-                if (!item) {
+                if (!current) {
                     send({ id, data: { ok: true, empty: true } });
                     return;
                 }
@@ -107,10 +252,10 @@
                     id,
                     data: {
                         ok: true,
-                        name: item.name ?? "",
-                        artist: (item.artists ?? []).map(a => a.name).join(", "),
-                        isPlaying: Boolean(response?.is_playing),
-                        imageUrl: item.album?.images?.[0]?.url ?? null
+                        name: current.name,
+                        artist: current.subtitle,
+                        isPlaying: !Boolean(state?.isPaused),
+                        imageUrl: current.imageUrl
                     }
                 });
                 return;
@@ -134,8 +279,25 @@
                 return;
             }
 
+            if (type === "diagnostics") {
+                send({
+                    id,
+                    data: {
+                        ok: true,
+                        spicetifyVersion: Spicetify.Config?.version ?? null,
+                        spotifyVersion: Spicetify.Platform?.PlatformData?.client_version ?? null,
+                        hasCosmos: Boolean(Spicetify.CosmosAsync),
+                        hasPlayer: Boolean(Spicetify.Player),
+                        hasRootlistApi: Boolean(Spicetify.Platform?.RootlistAPI?.getContents),
+                        platformApis: Object.keys(Spicetify.Platform ?? {}).sort()
+                    }
+                });
+                return;
+            }
+
             send({ id, data: { ok: false, error: "unknown_message" } });
         } catch (error) {
+            console.error(`[SpotifyDeck] ${type} failed`, error);
             send({
                 id,
                 data: {
@@ -145,6 +307,9 @@
             });
         }
     }
+
+    Spicetify.Player.addEventListener?.("songchange", rememberCurrentTrack);
+    rememberCurrentTrack();
 
     function connect() {
         clearTimeout(reconnectTimer);
