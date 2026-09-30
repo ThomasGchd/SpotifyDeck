@@ -14,6 +14,13 @@ public sealed class BridgeInstallerService
 
     public bool IsInstalled() => File.Exists(TargetPath);
 
+    public bool NeedsUpdate()
+    {
+        var source = Path.Combine(AppContext.BaseDirectory, "bridge", _extensionName);
+        return File.Exists(source) &&
+               (!File.Exists(TargetPath) || !FilesMatch(source, TargetPath));
+    }
+
     public async Task<bool> EnsureInstalledAsync()
     {
         var source = Path.Combine(AppContext.BaseDirectory, "bridge", _extensionName);
@@ -68,7 +75,10 @@ public sealed class BridgeInstallerService
                 "spicetify", "spicetify.exe"),
             Path.Combine(
                 Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-                "spicetify", "spicetify.exe")
+                "spicetify", "spicetify.exe"),
+            Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "Microsoft", "WinGet", "Packages", "Spicetify.Spicetify_Microsoft.Winget.Source_8wekyb3d8bbwe", "spicetify.exe")
         };
 
         var direct = candidates.FirstOrDefault(File.Exists);
