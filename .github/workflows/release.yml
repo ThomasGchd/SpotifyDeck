@@ -22,6 +22,7 @@ jobs:
       - name: Publish
         shell: pwsh
         run: |
+          $version = "${{ github.ref_name }}".TrimStart("v")
           dotnet publish src/SpotifyDeck/SpotifyDeck.csproj `
             -c Release `
             -r win-x64 `
@@ -29,6 +30,7 @@ jobs:
             -p:PublishSingleFile=true `
             -p:IncludeNativeLibrariesForSelfExtract=true `
             -p:DebugType=None `
+            -p:Version=$version `
             -o publish
 
       - name: Package
