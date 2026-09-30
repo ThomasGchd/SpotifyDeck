@@ -81,13 +81,19 @@
                     <ColumnDefinition Width="0.75*"/>
                 </Grid.ColumnDefinitions>
 
-                <StackPanel>
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
                     <TextBlock Text="Résultats"
                                Foreground="White"
                                FontSize="15"
                                FontWeight="SemiBold"
                                Margin="0,0,0,8"/>
                     <ListBox x:Name="ResultsList"
+                             Grid.Row="1"
+                             ScrollViewer.VerticalScrollBarVisibility="Auto"
                              Background="Transparent"
                              BorderThickness="0"
                              Foreground="White"
@@ -122,7 +128,7 @@
                             </DataTemplate>
                         </ListBox.ItemTemplate>
                     </ListBox>
-                </StackPanel>
+                </Grid>
 
                 <Grid Grid.Column="2">
                     <Grid.RowDefinitions>
@@ -131,13 +137,19 @@
                         <RowDefinition Height="*"/>
                     </Grid.RowDefinitions>
 
-                    <StackPanel>
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="*"/>
+                        </Grid.RowDefinitions>
                         <TextBlock Text="Récemment écoutés"
                                    Foreground="White"
                                    FontSize="15"
                                    FontWeight="SemiBold"
                                    Margin="0,0,0,8"/>
                         <ListBox x:Name="RecentList"
+                                 Grid.Row="1"
+                                 ScrollViewer.VerticalScrollBarVisibility="Auto"
                                  Background="Transparent"
                                  BorderThickness="0"
                                  Foreground="White"
@@ -166,15 +178,21 @@
                                 </DataTemplate>
                             </ListBox.ItemTemplate>
                         </ListBox>
-                    </StackPanel>
+                    </Grid>
 
-                    <StackPanel Grid.Row="2">
+                    <Grid Grid.Row="2">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="*"/>
+                        </Grid.RowDefinitions>
                         <TextBlock Text="Tes playlists"
                                    Foreground="White"
                                    FontSize="15"
                                    FontWeight="SemiBold"
                                    Margin="0,0,0,8"/>
                         <ListBox x:Name="PlaylistsList"
+                                 Grid.Row="1"
+                                 ScrollViewer.VerticalScrollBarVisibility="Auto"
                                  Background="Transparent"
                                  BorderThickness="0"
                                  Foreground="White"
@@ -202,7 +220,7 @@
                                 </DataTemplate>
                             </ListBox.ItemTemplate>
                         </ListBox>
-                    </StackPanel>
+                    </Grid>
                 </Grid>
             </Grid>
 
