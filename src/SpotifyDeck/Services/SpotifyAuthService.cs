@@ -1,3 +1,4 @@
+using System.IO;
 using System.Diagnostics;
 using System.Net;
 using System.Net.Http;
@@ -9,9 +10,8 @@ namespace SpotifyDeck.Services;
 
 public sealed class SpotifyAuthService
 {
-    // Public OAuth client identifier. Set this once for the SpotifyDeck app registration.
-    public const string ClientId = "SET_SPOTIFY_CLIENT_ID";
     private const string RedirectUri = "http://127.0.0.1:43821/callback/";
+    public string ClientId { get; } = ResolveClientId();
     private static readonly string[] Scopes =
     [
         "playlist-read-private",
@@ -24,7 +24,7 @@ public sealed class SpotifyAuthService
     private readonly HttpClient _http = new();
     private readonly SpotifyTokenStore _store = new();
 
-    public bool IsConfigured => !ClientId.StartsWith("SET_", StringComparison.Ordinal);
+    public bool IsConfigured => !string.IsNullOrWhiteSpace(ClientId);
     public bool HasSession => _store.Load() is not null;
 
     public async Task<string?> GetAccessTokenAsync()
@@ -146,6 +146,23 @@ public sealed class SpotifyAuthService
     }
 
     public void Disconnect() => _store.Clear();
+
+    private static string ResolveClientId()
+    {
+        var fromEnvironment = Environment.GetEnvironmentVariable("SPOTIFYDECK_CLIENT_ID");
+        if (!string.IsNullOrWhiteSpace(fromEnvironment))
+            return fromEnvironment.Trim();
+
+        try
+        {
+            var path = Path.Combine(AppContext.BaseDirectory, "spotify-client-id.txt");
+            if (File.Exists(path))
+                return File.ReadAllText(path).Trim();
+        }
+        catch { }
+
+        return string.Empty;
+    }
 
     private static string Base64Url(byte[] bytes) =>
         Convert.ToBase64String(bytes).TrimEnd('=').Replace('+', '-').Replace('/', '_');
