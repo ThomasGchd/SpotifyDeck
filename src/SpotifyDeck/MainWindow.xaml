@@ -109,7 +109,7 @@
                                             <ColumnDefinition Width="*"/>
                                         </Grid.ColumnDefinitions>
                                         <Border Width="42" Height="42" CornerRadius="7" ClipToBounds="True" Background="#292929">
-                                            <Image Source="{Binding ImageUrl}" Stretch="UniformToFill"/>
+                                            <Image Source="{Binding ImageUrl, IsAsync=True}" Stretch="UniformToFill"/>
                                         </Border>
                                         <StackPanel Grid.Column="2" VerticalAlignment="Center">
                                             <TextBlock Text="{Binding Name}"
@@ -165,7 +165,7 @@
                                                 <ColumnDefinition Width="*"/>
                                             </Grid.ColumnDefinitions>
                                             <Border Width="38" Height="38" CornerRadius="6" ClipToBounds="True" Background="#292929">
-                                                <Image Source="{Binding ImageUrl}" Stretch="UniformToFill"/>
+                                                <Image Source="{Binding ImageUrl, IsAsync=True}" Stretch="UniformToFill"/>
                                             </Border>
                                             <StackPanel Grid.Column="2" VerticalAlignment="Center">
                                                 <TextBlock Text="{Binding Name}" Foreground="White" FontSize="12"
@@ -208,7 +208,7 @@
                                                 <ColumnDefinition Width="*"/>
                                             </Grid.ColumnDefinitions>
                                             <Border Width="38" Height="38" CornerRadius="6" ClipToBounds="True" Background="#292929">
-                                                <Image Source="{Binding ImageUrl}" Stretch="UniformToFill"/>
+                                                <Image Source="{Binding ImageUrl, IsAsync=True}" Stretch="UniformToFill"/>
                                             </Border>
                                             <TextBlock Grid.Column="2" Text="{Binding Name}"
                                                        VerticalAlignment="Center"
