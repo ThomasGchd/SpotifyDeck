@@ -88,7 +88,10 @@ public sealed class UpdateService
 
         try
         {
-            using var response = await _http.GetAsync(update.DownloadUrl);
+            using var response = await _http.GetAsync(
+                update.DownloadUrl,
+                HttpCompletionOption.ResponseHeadersRead);
+
             if (!response.IsSuccessStatusCode)
                 return false;
 
@@ -97,6 +100,10 @@ public sealed class UpdateService
 
             ZipFile.ExtractToDirectory(zipPath, extracted, overwriteFiles: true);
 
+            var packagedExe = Path.Combine(extracted, "SpotifyDeck.exe");
+            if (!File.Exists(packagedExe))
+                return false;
+
             var currentDirectory = AppContext.BaseDirectory.TrimEnd(
                 Path.DirectorySeparatorChar,
                 Path.AltDirectorySeparatorChar);
@@ -104,16 +111,39 @@ public sealed class UpdateService
             var currentExe = Environment.ProcessPath
                              ?? Path.Combine(currentDirectory, "SpotifyDeck.exe");
 
+            var logDirectory = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "SpotifyDeck",
+                "logs");
+            Directory.CreateDirectory(logDirectory);
+
+            var updateLog = Path.Combine(logDirectory, "update.log");
             var updater = Path.Combine(tempRoot, "apply-update.cmd");
+            var currentPid = Environment.ProcessId;
+
             var lines = new[]
             {
                 "@echo off",
-                "setlocal",
-                "timeout /t 2 /nobreak >nul",
-                $"robocopy \"{extracted}\" \"{currentDirectory}\" /E /R:4 /W:1 /NFL /NDL /NJH /NJS /NP >nul",
+                "setlocal EnableExtensions",
+                $"set \"LOG={updateLog}\"",
+                $"echo [%date% %time%] Starting update to {update.Version}>>\"%LOG%\"",
+                ":wait_for_app",
+                $"tasklist /FI \"PID eq {currentPid}\" 2>NUL | find \"{currentPid}\" >NUL",
+                "if not errorlevel 1 (",
+                "  timeout /t 1 /nobreak >nul",
+                "  goto wait_for_app",
+                ")",
+                $"robocopy \"{extracted}\" \"{currentDirectory}\" /E /R:5 /W:1 /NFL /NDL /NJH /NJS /NP >>\"%LOG%\"",
+                "set COPYCODE=%ERRORLEVEL%",
+                "if %COPYCODE% GEQ 8 goto update_failed",
+                $"echo [%date% %time%] Update installed. Restarting.>>\"%LOG%\"",
                 $"start \"\" \"{currentExe}\"",
                 $"rmdir /S /Q \"{tempRoot}\"",
-                "exit"
+                "exit /b 0",
+                ":update_failed",
+                "echo [%date% %time%] Update failed with robocopy code %COPYCODE%.>>\"%LOG%\"",
+                $"start \"\" \"{currentExe}\"",
+                "exit /b %COPYCODE%"
             };
 
             await File.WriteAllLinesAsync(updater, lines);
@@ -122,7 +152,8 @@ public sealed class UpdateService
             {
                 FileName = updater,
                 UseShellExecute = true,
-                WindowStyle = ProcessWindowStyle.Hidden
+                WindowStyle = ProcessWindowStyle.Hidden,
+                WorkingDirectory = tempRoot
             });
 
             return true;
