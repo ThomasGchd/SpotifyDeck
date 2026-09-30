@@ -97,6 +97,25 @@ public sealed class SpicetifyBridgeService : IAsyncDisposable
         return IsOk(data);
     }
 
+    public async Task<SpotifyPlaybackState?> GetPlaybackStateAsync()
+    {
+        var data = await SendAsync("state", new { });
+        if (data is not { ValueKind: JsonValueKind.Object })
+            return null;
+
+        if (data.Value.TryGetProperty("empty", out var empty) && empty.GetBoolean())
+            return null;
+
+        if (!IsOk(data))
+            return null;
+
+        return new SpotifyPlaybackState(
+            data.Value.TryGetProperty("name", out var name) ? name.GetString() ?? "" : "",
+            data.Value.TryGetProperty("artist", out var artist) ? artist.GetString() ?? "" : "",
+            data.Value.TryGetProperty("isPlaying", out var playing) && playing.GetBoolean(),
+            data.Value.TryGetProperty("imageUrl", out var image) ? image.GetString() : null);
+    }
+
     public async Task<bool> TogglePlaybackAsync() =>
         IsOk(await SendAsync("toggle", new { }));
 
