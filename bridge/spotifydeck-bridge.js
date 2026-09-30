@@ -92,6 +92,24 @@
                 return;
             }
 
+            if (type === "toggle") {
+                Spicetify.Player.togglePlay();
+                send({ id, data: { ok: true } });
+                return;
+            }
+
+            if (type === "next") {
+                Spicetify.Player.next();
+                send({ id, data: { ok: true } });
+                return;
+            }
+
+            if (type === "previous") {
+                Spicetify.Player.back();
+                send({ id, data: { ok: true } });
+                return;
+            }
+
             send({ id, data: { ok: false, error: "unknown_message" } });
         } catch (error) {
             send({
