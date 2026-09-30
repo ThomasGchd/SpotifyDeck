@@ -445,7 +445,15 @@ public partial class MainWindow : Window
         if (!_spotifyAuth.HasSession && !_bridge.IsConnected)
             return;
 
-        await Task.WhenAll(LoadRecentAsync(), LoadPlaylistsAsync());
+        try
+        {
+            await Task.WhenAll(LoadRecentAsync(), LoadPlaylistsAsync());
+        }
+        catch (Exception ex)
+        {
+            await AppLog.WriteAsync("spotify-quick-access", ex);
+            StatusText.Text = "Spotify connecté · accès rapide temporairement indisponible.";
+        }
     }
 
     private async Task LoadRecentAsync()
