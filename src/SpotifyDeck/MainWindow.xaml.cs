@@ -201,7 +201,7 @@ public partial class MainWindow : Window
                 return;
             }
 
-            Application.Current.Shutdown();
+            System.Windows.Application.Current.Shutdown();
         }
         finally
         {
@@ -255,7 +255,7 @@ public partial class MainWindow : Window
             : $"{results.Count} résultat(s).";
     }
 
-    private async void SearchBox_KeyDown(object sender, KeyEventArgs e)
+    private async void SearchBox_KeyDown(object sender, System.Windows.Input.KeyEventArgs e)
     {
         if (e.Key == Key.Down && Results.Count > 0)
         {
@@ -282,7 +282,7 @@ public partial class MainWindow : Window
             await PlayAsync(item);
     }
 
-    private async void ResultsList_KeyDown(object sender, KeyEventArgs e)
+    private async void ResultsList_KeyDown(object sender, System.Windows.Input.KeyEventArgs e)
     {
         if (e.Key == Key.Enter && ResultsList.SelectedItem is SpotifyItem item)
         {
@@ -369,7 +369,7 @@ public partial class MainWindow : Window
             : "Connecte Spotify une fois, puis SpotifyDeck travaillera en arrière-plan.";
     }
 
-    private void MainWindow_PreviewKeyDown(object sender, KeyEventArgs e)
+    private void MainWindow_PreviewKeyDown(object sender, System.Windows.Input.KeyEventArgs e)
     {
         if (e.Key == Key.Escape)
         {
@@ -414,6 +414,6 @@ public partial class MainWindow : Window
         }
 
         await _bridge.DisposeAsync();
-        Application.Current.Shutdown();
+        System.Windows.Application.Current.Shutdown();
     }
 }
