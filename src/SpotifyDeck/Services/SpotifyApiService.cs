@@ -123,8 +123,32 @@ public sealed class SpotifyApiService
         var deviceId = await WaitForPlaybackDeviceAsync(token);
 
         if (string.IsNullOrWhiteSpace(deviceId))
+        {
+            await AppLog.WriteAsync("spotify-play", "No controllable Spotify device became available.");
             return false;
+        }
 
+        await AppLog.WriteAsync("spotify-play", $"Sending {item.Type} {item.Uri} to device {deviceId}.");
+        await SendPlayAsync(token, deviceId, item);
+
+        // A 204 means Spotify accepted the command, not that the client has already
+        // started playing. Verify the state and retry once after the device settles.
+        if (await WaitForRequestedPlaybackAsync(token, item))
+            return true;
+
+        await AppLog.WriteAsync("spotify-play", "Playback command accepted but not observed; retrying once.");
+        await Task.Delay(700);
+        await SendPlayAsync(token, deviceId, item);
+
+        var confirmed = await WaitForRequestedPlaybackAsync(token, item);
+        if (!confirmed)
+            await AppLog.WriteAsync("spotify-play", "Playback was not confirmed after retry.");
+
+        return confirmed;
+    }
+
+    private async Task SendPlayAsync(string token, string deviceId, SpotifyItem item)
+    {
         using var request = new HttpRequestMessage(
             HttpMethod.Put,
             $"me/player/play?device_id={Uri.EscapeDataString(deviceId)}");
@@ -136,7 +160,47 @@ public sealed class SpotifyApiService
 
         request.Content = new StringContent(body, Encoding.UTF8, "application/json");
         await SendAndEnsureSuccessAsync(request);
-        return true;
+    }
+
+    private async Task<bool> WaitForRequestedPlaybackAsync(string token, SpotifyItem requested)
+    {
+        for (var attempt = 0; attempt < 12; attempt++)
+        {
+            await Task.Delay(250);
+
+            using var request = new HttpRequestMessage(HttpMethod.Get, "me/player");
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+
+            using var response = await _http.SendAsync(request);
+            if (response.StatusCode == HttpStatusCode.NoContent)
+                continue;
+
+            var body = await response.Content.ReadAsStringAsync();
+            if (!response.IsSuccessStatusCode)
+                throw SpotifyApiException.From(response.StatusCode, "GET me/player", body);
+
+            using var doc = JsonDocument.Parse(body);
+            var root = doc.RootElement;
+            var isPlaying = root.TryGetProperty("is_playing", out var playing) && playing.GetBoolean();
+            if (!isPlaying)
+                continue;
+
+            if (requested.Type == "track" &&
+                root.TryGetProperty("item", out var currentItem) &&
+                currentItem.ValueKind == JsonValueKind.Object &&
+                currentItem.TryGetProperty("uri", out var currentUri) &&
+                string.Equals(currentUri.GetString(), requested.Uri, StringComparison.Ordinal))
+                return true;
+
+            if (requested.Type == "playlist" &&
+                root.TryGetProperty("context", out var context) &&
+                context.ValueKind == JsonValueKind.Object &&
+                context.TryGetProperty("uri", out var contextUri) &&
+                string.Equals(contextUri.GetString(), requested.Uri, StringComparison.Ordinal))
+                return true;
+        }
+
+        return false;
     }
 
     public async Task<bool> TogglePlaybackAsync()
@@ -176,19 +240,44 @@ public sealed class SpotifyApiService
 
     private async Task<string?> WaitForPlaybackDeviceAsync(string token)
     {
-        for (var attempt = 0; attempt < 20; attempt++)
+        for (var attempt = 0; attempt < 25; attempt++)
         {
             var devices = await GetDevicesAsync(token);
 
             var active = devices.FirstOrDefault(x => x.Active && !x.Restricted);
             if (active is not null)
-                return active.Id;
-
-            var available = devices.FirstOrDefault(x => !x.Restricted);
-            if (available is not null && await TransferPlaybackAsync(token, available.Id))
             {
-                await Task.Delay(300);
-                return available.Id;
+                await AppLog.WriteAsync("spotify-device", $"Using active device: {active.Name} ({active.Type}) {active.Id}.");
+                return active.Id;
+            }
+
+            // Prefer the desktop client we just launched instead of an arbitrary
+            // speaker/phone that happens to be visible through Spotify Connect.
+            var available = devices.FirstOrDefault(x =>
+                                !x.Restricted &&
+                                x.Type.Equals("computer", StringComparison.OrdinalIgnoreCase))
+                            ?? devices.FirstOrDefault(x => !x.Restricted);
+
+            if (available is not null)
+            {
+                await AppLog.WriteAsync("spotify-device", $"Transferring to: {available.Name} ({available.Type}) {available.Id}.");
+                await TransferPlaybackAsync(token, available.Id);
+
+                // Spotify documents that ordering between transfer and player commands
+                // is not guaranteed. Wait until the transfer is observable before play.
+                for (var settle = 0; settle < 12; settle++)
+                {
+                    await Task.Delay(250);
+                    var afterTransfer = await GetDevicesAsync(token);
+                    var target = afterTransfer.FirstOrDefault(x =>
+                        x.Id == available.Id && x.Active && !x.Restricted);
+
+                    if (target is not null)
+                    {
+                        await AppLog.WriteAsync("spotify-device", $"Device is active: {target.Name} ({target.Type}).");
+                        return target.Id;
+                    }
+                }
             }
 
             await Task.Delay(400);
@@ -217,7 +306,9 @@ public sealed class SpotifyApiService
             .Select(x => new SpotifyDevice(
                 x.TryGetProperty("id", out var id) ? id.GetString() ?? "" : "",
                 x.TryGetProperty("is_active", out var active) && active.GetBoolean(),
-                x.TryGetProperty("is_restricted", out var restricted) && restricted.GetBoolean()))
+                x.TryGetProperty("is_restricted", out var restricted) && restricted.GetBoolean(),
+                x.TryGetProperty("name", out var name) ? name.GetString() ?? "Spotify" : "Spotify",
+                x.TryGetProperty("type", out var type) ? type.GetString() ?? "unknown" : "unknown"))
             .Where(x => !string.IsNullOrWhiteSpace(x.Id))
             .ToList();
     }
@@ -327,7 +418,12 @@ public sealed class SpotifyApiService
     }
 }
 
-internal sealed record SpotifyDevice(string Id, bool Active, bool Restricted);
+internal sealed record SpotifyDevice(
+    string Id,
+    bool Active,
+    bool Restricted,
+    string Name,
+    string Type);
 
 public sealed class SpotifyApiException : Exception
 {
