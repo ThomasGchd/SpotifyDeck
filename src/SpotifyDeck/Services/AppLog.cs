@@ -9,7 +9,10 @@ public static class AppLog
         "SpotifyDeck",
         "logs");
 
-    public static async Task WriteAsync(string area, Exception ex)
+    public static Task WriteAsync(string area, Exception ex)
+        => WriteAsync(area, ex.ToString());
+
+    public static async Task WriteAsync(string area, string message)
     {
         try
         {
@@ -17,7 +20,7 @@ public static class AppLog
             var path = Path.Combine(LogDirectory, "spotifydeck.log");
             await File.AppendAllTextAsync(
                 path,
-                $"[{DateTime.Now:O}] [{area}] {ex}\r\n\r\n");
+                $"[{DateTime.Now:O}] [{area}] {message}\r\n\r\n");
         }
         catch
         {
