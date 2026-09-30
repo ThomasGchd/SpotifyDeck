@@ -24,10 +24,16 @@ public partial class App : System.Windows.Application
             var window = new MainWindow();
             MainWindow = window;
 
-            // First launch should never look like a crash or a no-op.
-            // Show the overlay immediately, then initialize background services.
-            window.Show();
-            window.Activate();
+            var background = e.Args.Any(x =>
+                x.Equals("--background", StringComparison.OrdinalIgnoreCase));
+
+            // Manual launch opens SpotifyDeck immediately. Windows autostart keeps
+            // it in the tray so it never interrupts login or steals focus.
+            if (!background)
+            {
+                window.Show();
+                window.Activate();
+            }
 
             await window.InitializeAsync();
         }
