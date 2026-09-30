@@ -57,6 +57,24 @@
                 return;
             }
 
+            if (type === "recent") {
+                const response = await Spicetify.CosmosAsync.get(
+                    "https://api.spotify.com/v1/me/player/recently-played?limit=8"
+                );
+                const seen = new Set();
+                const recent = [];
+
+                for (const entry of response?.items ?? []) {
+                    const track = entry?.track;
+                    if (!track?.id || seen.has(track.id)) continue;
+                    seen.add(track.id);
+                    recent.push(resultItem(track, "track"));
+                }
+
+                send({ id, data: recent });
+                return;
+            }
+
             if (type === "play") {
                 const uri = payload?.uri ?? "";
                 const itemType = payload?.type ?? "";
