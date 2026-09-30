@@ -29,7 +29,7 @@ jobs:
             -p:PublishSingleFile=true `
             -p:IncludeNativeLibrariesForSelfExtract=true `
             -p:DebugType=None `
-            -p:Version=0.1.0 `
+            -p:Version=0.2.0 `
             -o publish
 
       - name: Inject Spotify public client id
@@ -58,7 +58,7 @@ jobs:
           if (!(Test-Path $iscc)) {
             choco install innosetup --yes --no-progress
           }
-          & $iscc "/DMyAppVersion=0.1.0" "installer\SpotifyDeck.iss"
+          & $iscc "/DMyAppVersion=0.2.0" "installer\SpotifyDeck.iss"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Smoke-test installer contents
@@ -78,8 +78,8 @@ jobs:
           if (!(Test-Path (Join-Path $target "SpotifyDeck.exe"))) {
             throw "SpotifyDeck.exe missing after install"
           }
-          if (!(Test-Path (Join-Path $target "bridge\spotifydeck-bridge.js"))) {
-            throw "Bundled Spotify bridge missing after install"
+          if (Test-Path (Join-Path $target "bridge\spotifydeck-bridge.js")) {
+            throw "Legacy Spicetify bridge must not ship in standalone builds"
           }
 
       - name: Upload installer test build
