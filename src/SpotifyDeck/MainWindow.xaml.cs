@@ -177,7 +177,7 @@ public partial class MainWindow : Window
             _ = ShowOverlayAsync();
     }
 
-    private async Task ShowOverlayAsync()
+    public async Task ShowOverlayAsync()
     {
         PositionOverlay();
         Show();
