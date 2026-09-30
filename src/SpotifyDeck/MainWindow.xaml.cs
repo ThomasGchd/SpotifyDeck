@@ -396,6 +396,18 @@ public partial class MainWindow : Window
             await PlayAsync(item);
     }
 
+    private async void QuickList_KeyDown(object sender, System.Windows.Input.KeyEventArgs e)
+    {
+        if (e.Key != Key.Enter || sender is not System.Windows.Controls.ListBox list)
+            return;
+
+        if (list.SelectedItem is SpotifyItem item)
+        {
+            await PlayAsync(item);
+            e.Handled = true;
+        }
+    }
+
     private async Task PlayAsync(SpotifyItem item)
     {
         StatusText.Text = $"Lecture de {item.Name}…";
