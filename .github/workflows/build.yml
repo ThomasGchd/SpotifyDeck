@@ -32,6 +32,15 @@ jobs:
             -p:Version=0.1.0 `
             -o publish
 
+      - name: Inject Spotify public client id
+        if: github.event_name == 'push'
+        shell: pwsh
+        run: |
+          $clientId = "${{ vars.SPOTIFY_CLIENT_ID }}"
+          if (![string]::IsNullOrWhiteSpace($clientId)) {
+            Set-Content -Path publish\spotify-client-id.txt -Value $clientId -NoNewline
+          }
+
       - name: Upload portable test build
         if: github.event_name == 'push'
         uses: actions/upload-artifact@v4
