@@ -61,6 +61,27 @@ jobs:
           & $iscc "/DMyAppVersion=0.1.0" "installer\SpotifyDeck.iss"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
+      - name: Smoke-test installer contents
+        if: github.event_name == 'push'
+        shell: pwsh
+        run: |
+          $target = Join-Path $env:RUNNER_TEMP "SpotifyDeckSmoke"
+          $installer = Resolve-Path "installer-output\SpotifyDeck-Setup-win-x64.exe"
+          $process = Start-Process -FilePath $installer -ArgumentList @(
+            "/VERYSILENT",
+            "/SUPPRESSMSGBOXES",
+            "/NORESTART",
+            "/SP-",
+            "/DIR=$target"
+          ) -PassThru -Wait
+          if ($process.ExitCode -ne 0) { exit $process.ExitCode }
+          if (!(Test-Path (Join-Path $target "SpotifyDeck.exe"))) {
+            throw "SpotifyDeck.exe missing after install"
+          }
+          if (!(Test-Path (Join-Path $target "bridge\spotifydeck-bridge.js"))) {
+            throw "Bundled Spotify bridge missing after install"
+          }
+
       - name: Upload installer test build
         if: github.event_name == 'push'
         uses: actions/upload-artifact@v4
