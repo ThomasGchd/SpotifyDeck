@@ -7,7 +7,7 @@ public partial class App : Application
 {
     private Mutex? _mutex;
 
-    protected override void OnStartup(StartupEventArgs e)
+    protected override async void OnStartup(StartupEventArgs e)
     {
         _mutex = new Mutex(true, "SpotifyDeck.SingleInstance", out var createdNew);
         if (!createdNew)
@@ -17,15 +17,15 @@ public partial class App : Application
         }
 
         base.OnStartup(e);
+
         var window = new MainWindow();
         MainWindow = window;
-        window.Show();
-        window.Hide();
+        await window.InitializeAsync();
     }
 
     protected override void OnExit(ExitEventArgs e)
     {
-        _mutex?.ReleaseMutex();
+        try { _mutex?.ReleaseMutex(); } catch { }
         _mutex?.Dispose();
         base.OnExit(e);
     }
