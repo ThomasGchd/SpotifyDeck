@@ -29,4 +29,5 @@ public sealed class AppSettingsService
 public sealed record SpotifyDeckSettings
 {
     public string Shortcut { get; init; } = "Ctrl+Shift+M";
+    public string SpotifyClientId { get; init; } = "";
 }
