@@ -408,6 +408,14 @@ public partial class MainWindow : Window
 
     private async void ResultsList_KeyDown(object sender, System.Windows.Input.KeyEventArgs e)
     {
+        if (e.Key == Key.Up && ResultsList.SelectedIndex <= 0)
+        {
+            SearchBox.Focus();
+            Keyboard.Focus(SearchBox);
+            e.Handled = true;
+            return;
+        }
+
         if (e.Key == Key.Enter && ResultsList.SelectedItem is SpotifyItem item)
         {
             await PlayAsync(item);
