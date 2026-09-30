@@ -17,6 +17,7 @@ public partial class MainWindow : Window
     private const uint ModAlt = 0x0001;
     private const uint ModControl = 0x0002;
     private const uint ModShift = 0x0004;
+    private const uint ModWin = 0x0008;
     private const uint ModNoRepeat = 0x4000;
 
     [DllImport("user32.dll", SetLastError = true)]
@@ -133,6 +134,7 @@ public partial class MainWindow : Window
             if (part.Equals("Ctrl", StringComparison.OrdinalIgnoreCase)) modifiers |= ModControl;
             else if (part.Equals("Alt", StringComparison.OrdinalIgnoreCase)) modifiers |= ModAlt;
             else if (part.Equals("Shift", StringComparison.OrdinalIgnoreCase)) modifiers |= ModShift;
+            else if (part.Equals("Win", StringComparison.OrdinalIgnoreCase)) modifiers |= ModWin;
             else if (part.Equals("Space", StringComparison.OrdinalIgnoreCase)) key = Key.Space;
             else if (Enum.TryParse<Key>(part, true, out var parsed)) key = parsed;
         }
