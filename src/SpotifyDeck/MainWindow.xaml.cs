@@ -100,6 +100,8 @@ public partial class MainWindow : Window
 
     public async Task InitializeAsync()
     {
+        await LegacyCleanupService.CleanupAsync();
+
         var token = await _spotifyAuth.GetAccessTokenAsync();
         var connected = !string.IsNullOrWhiteSpace(token);
 
