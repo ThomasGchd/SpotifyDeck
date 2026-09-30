@@ -117,8 +117,19 @@ public partial class MainWindow : Window
         // is not configured in release builds.
         try
         {
-            if (!_spotifyAuth.HasSession && _installer.IsInstalled())
-                await _installer.EnsureInstalledAsync();
+            // Never run "spicetify apply" during ordinary SpotifyDeck startup:
+            // it restarts Spotify. Only refresh the extension when the bundled
+            // bridge actually changed.
+            if (!_spotifyAuth.HasSession && _installer.NeedsUpdate())
+            {
+                StatusText.Text = "Mise à jour du pont Spotify…";
+                var updated = await _installer.EnsureInstalledAsync();
+                await AppLog.WriteAsync(
+                    "bridge-update",
+                    updated
+                        ? "Bundled bridge refreshed. Spotify may need one restart."
+                        : "Bundled bridge refresh failed.");
+            }
 
             await _bridge.StartAsync();
         }
@@ -290,14 +301,27 @@ public partial class MainWindow : Window
             return;
         }
 
+        // Applying Spicetify may restart Spotify. Give that restart time to
+        // settle before deciding whether the bridge is unavailable.
+        await Task.Delay(900);
         await _spotify.EnsureRunningHiddenAsync();
 
-        for (var i = 0; i < 24 && !_bridge.IsConnected; i++)
+        for (var i = 0; i < 60 && !_bridge.IsConnected; i++)
             await Task.Delay(250);
 
         UpdateConnectionUi(_bridge.IsConnected);
         if (_bridge.IsConnected)
+        {
             await RefreshSpotifyUiAsync();
+        }
+        else
+        {
+            StatusText.Text = "Spotify a redémarré mais le pont ne s'est pas reconnecté.";
+            await AppLog.WriteAsync(
+                "bridge-connect",
+                "Timed out waiting 15 seconds for the Spotify extension WebSocket.");
+            ConnectButton.IsEnabled = true;
+        }
     }
 
     private async void UpdateButton_Click(object sender, RoutedEventArgs e)
