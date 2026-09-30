@@ -12,22 +12,29 @@ public sealed class SpotifyProcessService
 
     public async Task EnsureRunningHiddenAsync()
     {
-        if (Process.GetProcessesByName("Spotify").Length == 0)
+        // Never hide a Spotify window the user already had open. SpotifyDeck only
+        // suppresses the window it launches itself in the background.
+        if (Process.GetProcessesByName("Spotify").Length > 0)
+            return;
+
+        try
         {
-            try
+            Process.Start(new ProcessStartInfo("spotify:")
             {
-                Process.Start(new ProcessStartInfo("spotify:")
-                {
-                    UseShellExecute = true,
-                    WindowStyle = ProcessWindowStyle.Minimized
-                });
-            }
-            catch { }
+                UseShellExecute = true,
+                WindowStyle = ProcessWindowStyle.Minimized
+            });
+        }
+        catch (Exception ex)
+        {
+            await AppLog.WriteAsync("spotify-launch", ex);
+            return;
         }
 
-        for (var i = 0; i < 15; i++)
+        for (var i = 0; i < 20; i++)
         {
-            await Task.Delay(200);
+            await Task.Delay(150);
+
             foreach (var process in Process.GetProcessesByName("Spotify"))
             {
                 try
@@ -35,7 +42,10 @@ public sealed class SpotifyProcessService
                     if (process.MainWindowHandle != IntPtr.Zero)
                         ShowWindow(process.MainWindowHandle, SwHide);
                 }
-                catch { }
+                catch
+                {
+                    // Spotify may restart helper processes while booting.
+                }
             }
         }
     }
