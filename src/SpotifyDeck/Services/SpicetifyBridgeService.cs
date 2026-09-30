@@ -76,10 +76,22 @@ public sealed class SpicetifyBridgeService : IAsyncDisposable
     public async Task<bool> PlayAsync(SpotifyItem item)
     {
         var data = await SendAsync("play", new { uri = item.Uri, type = item.Type });
-        return data is { ValueKind: JsonValueKind.Object } &&
-               data.Value.TryGetProperty("ok", out var ok) &&
-               ok.GetBoolean();
+        return IsOk(data);
     }
+
+    public async Task<bool> TogglePlaybackAsync() =>
+        IsOk(await SendAsync("toggle", new { }));
+
+    public async Task<bool> NextAsync() =>
+        IsOk(await SendAsync("next", new { }));
+
+    public async Task<bool> PreviousAsync() =>
+        IsOk(await SendAsync("previous", new { }));
+
+    private static bool IsOk(JsonElement? data) =>
+        data is { ValueKind: JsonValueKind.Object } &&
+        data.Value.TryGetProperty("ok", out var ok) &&
+        ok.GetBoolean();
 
     private async Task<JsonElement?> SendAsync(string type, object payload)
     {
