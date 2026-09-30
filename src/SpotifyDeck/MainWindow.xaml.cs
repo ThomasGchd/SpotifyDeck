@@ -37,6 +37,7 @@ public partial class MainWindow : Window
     private readonly DispatcherTimer _searchTimer;
 
     private int _registeredHotkeyId;
+    private int _searchVersion;
     private string _hotkeyLabel = "Ctrl + Alt + M";
     private System.Windows.Forms.NotifyIcon? _trayIcon;
 
@@ -296,10 +297,12 @@ public partial class MainWindow : Window
     private void SearchBox_TextChanged(object sender, System.Windows.Controls.TextChangedEventArgs e)
     {
         _searchTimer.Stop();
+        _searchVersion++;
 
         if (string.IsNullOrWhiteSpace(SearchBox.Text))
         {
             Results.Clear();
+            StatusText.Text = "Tape un titre, un artiste ou une playlist.";
             return;
         }
 
@@ -313,18 +316,36 @@ public partial class MainWindow : Window
         if ((!_spotifyAuth.HasSession && !_bridge.IsConnected) || string.IsNullOrWhiteSpace(SearchBox.Text))
             return;
 
+        var version = _searchVersion;
+        var query = SearchBox.Text.Trim();
         StatusText.Text = "Recherche…";
-        var results = _spotifyAuth.HasSession
-            ? await _spotifyApi.SearchAsync(SearchBox.Text.Trim())
-            : await _bridge.SearchAsync(SearchBox.Text.Trim());
 
-        Results.Clear();
-        foreach (var item in results)
-            Results.Add(item);
+        try
+        {
+            var results = _spotifyAuth.HasSession
+                ? await _spotifyApi.SearchAsync(query)
+                : await _bridge.SearchAsync(query);
 
-        StatusText.Text = results.Count == 0
-            ? "Aucun résultat."
-            : $"{results.Count} résultat(s).";
+            if (version != _searchVersion)
+                return;
+
+            Results.Clear();
+            foreach (var item in results)
+                Results.Add(item);
+
+            StatusText.Text = results.Count == 0
+                ? "Aucun résultat."
+                : $"{results.Count} résultat(s) · Entrée pour lire.";
+        }
+        catch (Exception ex)
+        {
+            if (version != _searchVersion)
+                return;
+
+            Results.Clear();
+            StatusText.Text = "La recherche Spotify a échoué.";
+            await AppLog.WriteAsync("spotify-search", ex);
+        }
     }
 
     private async void SearchBox_KeyDown(object sender, System.Windows.Input.KeyEventArgs e)
@@ -375,19 +396,27 @@ public partial class MainWindow : Window
     {
         StatusText.Text = $"Lecture de {item.Name}…";
 
-        await _spotify.EnsureRunningHiddenAsync();
-        var ok = _spotifyAuth.HasSession
-            ? await _spotifyApi.PlayAsync(item)
-            : await _bridge.PlayAsync(item);
-        if (ok)
+        try
         {
-            Hide();
-            SearchBox.Clear();
-            Results.Clear();
+            await _spotify.EnsureRunningHiddenAsync();
+            var ok = _spotifyAuth.HasSession
+                ? await _spotifyApi.PlayAsync(item)
+                : await _bridge.PlayAsync(item);
+
+            if (ok)
+            {
+                Hide();
+                SearchBox.Clear();
+                Results.Clear();
+                return;
+            }
+
+            StatusText.Text = "Aucun lecteur Spotify disponible pour lancer ce morceau.";
         }
-        else
+        catch (Exception ex)
         {
             StatusText.Text = "Spotify n'a pas pu lancer cette lecture.";
+            await AppLog.WriteAsync("spotify-play", ex);
         }
     }
 
