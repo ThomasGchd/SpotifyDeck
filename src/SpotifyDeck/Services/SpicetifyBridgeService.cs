@@ -113,7 +113,8 @@ public sealed class SpicetifyBridgeService : IAsyncDisposable
 
     private async Task<JsonElement?> SendAsync(string type, object payload)
     {
-        if (!IsConnected || _socket is null)
+        var socket = _socket;
+        if (socket?.State != WebSocketState.Open)
             return null;
 
         var id = Guid.NewGuid().ToString("N");
@@ -122,7 +123,17 @@ public sealed class SpicetifyBridgeService : IAsyncDisposable
 
         var json = JsonSerializer.Serialize(new { id, type, payload });
         var bytes = Encoding.UTF8.GetBytes(json);
-        await _socket.SendAsync(bytes, WebSocketMessageType.Text, true, CancellationToken.None);
+
+        try
+        {
+            await socket.SendAsync(bytes, WebSocketMessageType.Text, true, CancellationToken.None);
+        }
+        catch (Exception ex)
+        {
+            _pending.TryRemove(id, out _);
+            await AppLog.WriteAsync("bridge-send", ex);
+            return null;
+        }
 
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(8));
         using var registration = timeout.Token.Register(() => tcs.TrySetCanceled(timeout.Token));
