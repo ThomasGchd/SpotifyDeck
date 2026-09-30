@@ -180,7 +180,7 @@ public partial class MainWindow : Window
                 return;
             }
 
-            var answer = MessageBox.Show(
+            var answer = System.Windows.MessageBox.Show(
                 $"SpotifyDeck {update.Version} est disponible. Installer maintenant ?",
                 "Mise à jour SpotifyDeck",
                 MessageBoxButton.YesNo,
