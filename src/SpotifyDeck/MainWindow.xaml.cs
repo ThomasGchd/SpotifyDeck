@@ -64,8 +64,9 @@ public partial class MainWindow : Window
         {
             _ = Dispatcher.InvokeAsync(async () =>
             {
-                UpdateConnectionUi(connected);
-                if (connected)
+                var usable = _spotifyAuth.HasSession || connected;
+                UpdateConnectionUi(usable);
+                if (usable)
                     await LoadQuickAccessAsync();
             });
         };
