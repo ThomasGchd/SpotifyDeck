@@ -31,6 +31,8 @@ public partial class MainWindow : Window
     private readonly SpotifyProcessService _spotify = new();
     private readonly BridgeInstallerService _installer = new();
     private readonly UpdateService _updates = new();
+    private readonly AppSettingsService _settingsService = new();
+    private SpotifyDeckSettings _settings = new();
     private readonly DispatcherTimer _searchTimer;
 
     private int _registeredHotkeyId;
@@ -71,8 +73,9 @@ public partial class MainWindow : Window
                 Hide();
         };
 
+        _settings = _settingsService.Load();
         ComponentDispatcher.ThreadFilterMessage += OnThreadFilterMessage;
-        RegisterGlobalHotkey();
+        RegisterGlobalHotkey(_settings.Shortcut);
         CreateTrayIcon();
     }
 
@@ -94,36 +97,64 @@ public partial class MainWindow : Window
             await LoadPlaylistsAsync();
     }
 
-    private void RegisterGlobalHotkey()
+    private bool RegisterGlobalHotkey(string shortcut)
     {
-        var vkM = (uint)KeyInterop.VirtualKeyFromKey(Key.M);
-
-        if (RegisterHotKey(IntPtr.Zero, HotkeyId, ModControl | ModAlt | ModNoRepeat, vkM))
+        if (_registeredHotkeyId != 0)
         {
-            _registeredHotkeyId = HotkeyId;
-            _hotkeyLabel = "Ctrl + Alt + M";
+            UnregisterHotKey(IntPtr.Zero, _registeredHotkeyId);
+            _registeredHotkeyId = 0;
+        }
+
+        var parts = shortcut.Split('+', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
+        uint modifiers = ModNoRepeat;
+        Key key = Key.M;
+
+        foreach (var part in parts)
+        {
+            if (part.Equals("Ctrl", StringComparison.OrdinalIgnoreCase)) modifiers |= ModControl;
+            else if (part.Equals("Alt", StringComparison.OrdinalIgnoreCase)) modifiers |= ModAlt;
+            else if (part.Equals("Shift", StringComparison.OrdinalIgnoreCase)) modifiers |= ModShift;
+            else if (part.Equals("Space", StringComparison.OrdinalIgnoreCase)) key = Key.Space;
+            else if (Enum.TryParse<Key>(part, true, out var parsed)) key = parsed;
+        }
+
+        var vk = (uint)KeyInterop.VirtualKeyFromKey(key);
+        if (!RegisterHotKey(IntPtr.Zero, HotkeyId, modifiers, vk))
+        {
+            var error = Marshal.GetLastWin32Error();
+            _hotkeyLabel = "raccourci indisponible";
+            StatusText.Text = $"{shortcut.Replace("+", " + ")} est déjà utilisé · choisis un autre raccourci.";
+            ShortcutText.Text = "Raccourci indisponible · clique sur Raccourci";
+            _ = AppLog.WriteAsync("hotkey", $"Échec {shortcut} (Win32 {error}).");
+            return false;
+        }
+
+        _registeredHotkeyId = HotkeyId;
+        _hotkeyLabel = shortcut.Replace("+", " + ");
+        ShortcutText.Text = $"{_hotkeyLabel} · ta musique sans quitter le jeu";
+        return true;
+    }
+
+    private void ShortcutButton_Click(object sender, RoutedEventArgs e)
+    {
+        var dialog = new ShortcutWindow(_settings.Shortcut) { Owner = this };
+        if (dialog.ShowDialog() != true)
+            return;
+
+        var previous = _settings.Shortcut;
+        var selected = dialog.SelectedShortcut;
+
+        if (!RegisterGlobalHotkey(selected))
+        {
+            RegisterGlobalHotkey(previous);
             return;
         }
 
-        var primaryError = Marshal.GetLastWin32Error();
-
-        // If another application owns Ctrl+Alt+M, keep SpotifyDeck usable
-        // rather than silently losing the global shortcut.
-        if (RegisterHotKey(IntPtr.Zero, FallbackHotkeyId, ModControl | ModShift | ModNoRepeat, vkM))
-        {
-            _registeredHotkeyId = FallbackHotkeyId;
-            _hotkeyLabel = "Ctrl + Shift + M";
-            StatusText.Text = "Ctrl + Alt + M est occupé · raccourci de secours : Ctrl + Shift + M.";
-            _ = AppLog.WriteAsync("hotkey",
-                $"Ctrl+Alt+M indisponible (Win32 {primaryError}). Secours Ctrl+Shift+M activé.");
-            return;
-        }
-
-        var fallbackError = Marshal.GetLastWin32Error();
-        _hotkeyLabel = "raccourci indisponible";
-        StatusText.Text = "Aucun raccourci global disponible · utilise l'icône SpotifyDeck.";
-        _ = AppLog.WriteAsync("hotkey",
-            $"Échec Ctrl+Alt+M (Win32 {primaryError}) et Ctrl+Shift+M (Win32 {fallbackError}).");
+        _settings = _settings with { Shortcut = selected };
+        _settingsService.Save(_settings);
+        StatusText.Text = $"{_hotkeyLabel} enregistré.";
+        if (_trayIcon is not null)
+            _trayIcon.Text = $"SpotifyDeck · {_hotkeyLabel}";
     }
 
     private void OnThreadFilterMessage(ref MSG msg, ref bool handled)
