@@ -249,6 +249,7 @@ public partial class MainWindow : Window
             if (!result.Success)
             {
                 UpdateConnectionUi(false);
+                StatusText.Text = result.Message;
                 return;
             }
 
@@ -259,8 +260,8 @@ public partial class MainWindow : Window
         catch (Exception ex)
         {
             await AppLog.WriteAsync("spotify-connect", ex);
-            StatusText.Text = "Connexion Spotify impossible. Consulte les logs.";
             UpdateConnectionUi(false);
+            StatusText.Text = "Connexion Spotify impossible. Consulte les logs.";
         }
         finally
         {
