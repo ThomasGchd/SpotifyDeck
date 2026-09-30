@@ -25,6 +25,19 @@ public partial class MainWindow : Window
     [DllImport("user32.dll", SetLastError = true)]
     private static extern bool UnregisterHotKey(IntPtr hWnd, int id);
 
+    [DllImport("user32.dll")]
+    private static extern bool SetWindowPos(
+        IntPtr hWnd, IntPtr hWndInsertAfter,
+        int x, int y, int cx, int cy, uint flags);
+
+    [DllImport("user32.dll")]
+    private static extern bool SetForegroundWindow(IntPtr hWnd);
+
+    private static readonly IntPtr HwndTopmost = new(-1);
+    private const uint SwpNoMove = 0x0002;
+    private const uint SwpNoSize = 0x0001;
+    private const uint SwpShowWindow = 0x0040;
+
     private readonly SpotifyAuthService _spotifyAuth = new();
     private readonly SpotifyApiService _spotifyApi;
     private readonly SpicetifyBridgeService _bridge = new();
@@ -185,6 +198,7 @@ public partial class MainWindow : Window
         PositionOverlay();
         Show();
         Activate();
+        PromoteOverlay();
         SearchBox.Focus();
         Keyboard.Focus(SearchBox);
 
@@ -197,6 +211,20 @@ public partial class MainWindow : Window
 
         await _spotify.EnsureRunningHiddenAsync();
         await LoadQuickAccessAsync();
+    }
+
+    private void PromoteOverlay()
+    {
+        var handle = new WindowInteropHelper(this).Handle;
+        if (handle == IntPtr.Zero)
+            return;
+
+        SetWindowPos(
+            handle,
+            HwndTopmost,
+            0, 0, 0, 0,
+            SwpNoMove | SwpNoSize | SwpShowWindow);
+        SetForegroundWindow(handle);
     }
 
     private void PositionOverlay()
