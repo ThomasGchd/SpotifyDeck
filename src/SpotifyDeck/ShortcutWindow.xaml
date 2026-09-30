@@ -1,0 +1,25 @@
+<Window x:Class="SpotifyDeck.ShortcutWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Raccourci SpotifyDeck" Width="390" Height="210"
+        WindowStartupLocation="CenterOwner" ResizeMode="NoResize"
+        Background="#171717" Foreground="White">
+    <Grid Margin="22">
+        <Grid.RowDefinitions><RowDefinition/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+        <StackPanel>
+            <TextBlock Text="Raccourci global" FontSize="20" FontWeight="SemiBold"/>
+            <TextBlock Margin="0,10,0,14" Foreground="#A0A0A0" TextWrapping="Wrap"
+                       Text="Choisis le raccourci qui ouvre SpotifyDeck, même quand une autre application est au premier plan."/>
+            <ComboBox x:Name="ShortcutCombo" Height="34" SelectedIndex="0">
+                <ComboBoxItem Content="Ctrl + Shift + M" Tag="Ctrl+Shift+M"/>
+                <ComboBoxItem Content="Ctrl + Alt + M" Tag="Ctrl+Alt+M"/>
+                <ComboBoxItem Content="Ctrl + Shift + Space" Tag="Ctrl+Shift+Space"/>
+                <ComboBoxItem Content="Alt + Shift + M" Tag="Alt+Shift+M"/>
+            </ComboBox>
+        </StackPanel>
+        <StackPanel Grid.Row="1" Orientation="Horizontal" HorizontalAlignment="Right">
+            <Button Width="90" Margin="0,0,8,0" Click="Cancel_Click">Annuler</Button>
+            <Button Width="110" Click="Save_Click">Enregistrer</Button>
+        </StackPanel>
+    </Grid>
+</Window>
