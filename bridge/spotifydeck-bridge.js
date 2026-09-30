@@ -92,6 +92,30 @@
                 return;
             }
 
+            if (type === "state") {
+                const response = await Spicetify.CosmosAsync.get(
+                    "https://api.spotify.com/v1/me/player/currently-playing"
+                );
+                const item = response?.item;
+
+                if (!item) {
+                    send({ id, data: { ok: true, empty: true } });
+                    return;
+                }
+
+                send({
+                    id,
+                    data: {
+                        ok: true,
+                        name: item.name ?? "",
+                        artist: (item.artists ?? []).map(a => a.name).join(", "),
+                        isPlaying: Boolean(response?.is_playing),
+                        imageUrl: item.album?.images?.[0]?.url ?? null
+                    }
+                });
+                return;
+            }
+
             if (type === "toggle") {
                 Spicetify.Player.togglePlay();
                 send({ id, data: { ok: true } });
