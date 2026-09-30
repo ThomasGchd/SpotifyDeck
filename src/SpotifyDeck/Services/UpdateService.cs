@@ -1,0 +1,138 @@
+using System.Diagnostics;
+using System.IO.Compression;
+using System.Reflection;
+using System.Text.Json;
+
+namespace SpotifyDeck.Services;
+
+public sealed class UpdateService
+{
+    private const string LatestReleaseApi =
+        "https://api.github.com/repos/ThomasGchd/SpotifyDeck/releases/latest";
+
+    private readonly HttpClient _http = new();
+
+    public UpdateService()
+    {
+        _http.DefaultRequestHeaders.UserAgent.ParseAdd("SpotifyDeck/1.0");
+    }
+
+    public async Task<UpdateInfo?> CheckAsync()
+    {
+        using var response = await _http.GetAsync(LatestReleaseApi);
+        if (!response.IsSuccessStatusCode)
+            return null;
+
+        using var doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        var root = doc.RootElement;
+
+        var tag = root.TryGetProperty("tag_name", out var tagNode)
+            ? tagNode.GetString()
+            : null;
+
+        if (string.IsNullOrWhiteSpace(tag))
+            return null;
+
+        var versionText = tag.Trim().TrimStart('v', 'V');
+        if (!Version.TryParse(versionText, out var remoteVersion))
+            return null;
+
+        var currentVersion = Assembly.GetExecutingAssembly().GetName().Version
+                             ?? new Version(0, 0, 0);
+
+        if (remoteVersion <= currentVersion)
+            return null;
+
+        string? downloadUrl = null;
+        if (root.TryGetProperty("assets", out var assets))
+        {
+            foreach (var asset in assets.EnumerateArray())
+            {
+                var name = asset.TryGetProperty("name", out var nameNode)
+                    ? nameNode.GetString()
+                    : null;
+
+                if (name?.Equals("SpotifyDeck-win-x64.zip",
+                        StringComparison.OrdinalIgnoreCase) == true)
+                {
+                    downloadUrl = asset.GetProperty("browser_download_url").GetString();
+                    break;
+                }
+            }
+        }
+
+        if (string.IsNullOrWhiteSpace(downloadUrl))
+            return null;
+
+        var releasePage = root.TryGetProperty("html_url", out var html)
+            ? html.GetString() ?? ""
+            : "";
+
+        return new UpdateInfo(remoteVersion, downloadUrl, releasePage);
+    }
+
+    public async Task<bool> DownloadAndApplyAsync(UpdateInfo update)
+    {
+        var tempRoot = Path.Combine(
+            Path.GetTempPath(),
+            "SpotifyDeck",
+            "update-" + Guid.NewGuid().ToString("N"));
+
+        var zipPath = Path.Combine(tempRoot, "update.zip");
+        var extracted = Path.Combine(tempRoot, "files");
+
+        Directory.CreateDirectory(tempRoot);
+        Directory.CreateDirectory(extracted);
+
+        try
+        {
+            using var response = await _http.GetAsync(update.DownloadUrl);
+            if (!response.IsSuccessStatusCode)
+                return false;
+
+            await using (var file = File.Create(zipPath))
+                await response.Content.CopyToAsync(file);
+
+            ZipFile.ExtractToDirectory(zipPath, extracted, overwriteFiles: true);
+
+            var currentDirectory = AppContext.BaseDirectory.TrimEnd(
+                Path.DirectorySeparatorChar,
+                Path.AltDirectorySeparatorChar);
+
+            var currentExe = Environment.ProcessPath
+                             ?? Path.Combine(currentDirectory, "SpotifyDeck.exe");
+
+            var updater = Path.Combine(tempRoot, "apply-update.cmd");
+            var lines = new[]
+            {
+                "@echo off",
+                "setlocal",
+                "timeout /t 2 /nobreak >nul",
+                $"robocopy \"{extracted}\" \"{currentDirectory}\" /E /R:4 /W:1 /NFL /NDL /NJH /NJS /NP >nul",
+                $"start \"\" \"{currentExe}\"",
+                $"rmdir /S /Q \"{tempRoot}\"",
+                "exit"
+            };
+
+            await File.WriteAllLinesAsync(updater, lines);
+
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = updater,
+                UseShellExecute = true,
+                WindowStyle = ProcessWindowStyle.Hidden
+            });
+
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+}
+
+public sealed record UpdateInfo(
+    Version Version,
+    string DownloadUrl,
+    string ReleasePage);
