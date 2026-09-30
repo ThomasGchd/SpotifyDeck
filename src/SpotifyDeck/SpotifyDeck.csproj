@@ -7,7 +7,7 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <AssemblyName>SpotifyDeck</AssemblyName>
-    <RootNamespace>SpotifyDeck</RootNamespace>
+    <RootNamespace>SpotifyDeck</RootNamespace>\n    <Version>0.1.0</Version>
   </PropertyGroup>
   <ItemGroup>
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
