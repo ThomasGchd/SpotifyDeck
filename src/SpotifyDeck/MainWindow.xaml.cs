@@ -265,15 +265,12 @@ public partial class MainWindow : Window
         // is injected in release builds.
         StatusText.Text = "Connexion locale Spotify…";
 
-        if (!_installer.IsInstalled())
+        var bridgeReady = await _installer.EnsureInstalledAsync();
+        if (!bridgeReady)
         {
-            var installed = await _installer.EnsureInstalledAsync();
-            if (!installed)
-            {
-                StatusText.Text = "Connexion Spotify indisponible sur cette build.";
-                ConnectButton.IsEnabled = true;
-                return;
-            }
+            StatusText.Text = "Connexion Spotify indisponible sur cette build.";
+            ConnectButton.IsEnabled = true;
+            return;
         }
 
         await _spotify.EnsureRunningHiddenAsync();
