@@ -76,18 +76,21 @@ public sealed class SpicetifyBridgeService : IAsyncDisposable
     public async Task<IReadOnlyList<SpotifyItem>> SearchAsync(string query)
     {
         var data = await SendAsync("search", new { query });
+        ThrowIfBridgeError("search", data);
         return DeserializeItems(data);
     }
 
     public async Task<IReadOnlyList<SpotifyItem>> GetPlaylistsAsync()
     {
         var data = await SendAsync("playlists", new { });
+        ThrowIfBridgeError("playlists", data);
         return DeserializeItems(data);
     }
 
     public async Task<IReadOnlyList<SpotifyItem>> GetRecentAsync()
     {
         var data = await SendAsync("recent", new { });
+        ThrowIfBridgeError("recent", data);
         return DeserializeItems(data);
     }
 
@@ -205,6 +208,20 @@ public sealed class SpicetifyBridgeService : IAsyncDisposable
             else
                 tcs.TrySetResult(JsonDocument.Parse("{}").RootElement.Clone());
         }
+    }
+
+    private static void ThrowIfBridgeError(string operation, JsonElement? data)
+    {
+        if (data is not { ValueKind: JsonValueKind.Object } ||
+            !data.Value.TryGetProperty("ok", out var ok) ||
+            ok.ValueKind != JsonValueKind.False)
+            return;
+
+        var error = data.Value.TryGetProperty("error", out var errorNode)
+            ? errorNode.GetString() ?? "unknown bridge error"
+            : "unknown bridge error";
+
+        throw new InvalidOperationException($"Spotify bridge {operation}: {error}");
     }
 
     private static IReadOnlyList<SpotifyItem> DeserializeItems(JsonElement? data)
