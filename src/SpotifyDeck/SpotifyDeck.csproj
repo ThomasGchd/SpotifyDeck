@@ -9,4 +9,7 @@
     <AssemblyName>SpotifyDeck</AssemblyName>
     <RootNamespace>SpotifyDeck</RootNamespace>
   </PropertyGroup>
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
 </Project>
