@@ -132,10 +132,106 @@
         return [...tracks, ...playlists];
     }
 
+    const collectSpotifyEntities = (value, output = [], seenObjects = new Set()) => {
+        if (!value || output.length >= 20) return output;
+
+        if (typeof value === "object") {
+            if (seenObjects.has(value)) return output;
+            seenObjects.add(value);
+        }
+
+        if (Array.isArray(value)) {
+            for (const item of value)
+                collectSpotifyEntities(item, output, seenObjects);
+            return output;
+        }
+
+        if (typeof value !== "object")
+            return output;
+
+        const uri = value.uri ?? value?.track?.uri ?? value?.playlist?.uri;
+        const source = value.track ?? value.playlist ?? value;
+
+        if (typeof uri === "string" &&
+            (uri.startsWith("spotify:track:") || uri.startsWith("spotify:playlist:"))) {
+            const type = uri.startsWith("spotify:track:") ? "track" : "playlist";
+            const artists = source.artists ?? source?.albumOfTrack?.artists?.items ?? [];
+            const artistText = Array.isArray(artists)
+                ? artists.map(a => a?.name ?? a?.profile?.name).filter(Boolean).join(", ")
+                : "";
+
+            const cover =
+                source?.album?.images?.[0]?.url ??
+                source?.images?.[0]?.url ??
+                source?.coverArt?.sources?.[0]?.url ??
+                source?.imageUrl ??
+                null;
+
+            output.push({
+                id: uriId(uri),
+                name: source.name ?? source.title ?? "",
+                subtitle: type === "track" ? artistText : "Playlist",
+                uri,
+                type,
+                imageUrl: imageUrl(cover)
+            });
+        }
+
+        for (const child of Object.values(value))
+            collectSpotifyEntities(child, output, seenObjects);
+
+        return output;
+    };
+
+    async function nativeSearch(query) {
+        const platform = Spicetify.Platform ?? {};
+        const apiEntries = Object.entries(platform)
+            .filter(([name, api]) => /search/i.test(name) && api && typeof api === "object");
+
+        for (const [, api] of apiEntries) {
+            for (const methodName of ["search", "query", "getResults", "getSearchResults"]) {
+                const fn = api?.[methodName];
+                if (typeof fn !== "function") continue;
+
+                const attempts = [
+                    () => fn.call(api, query),
+                    () => fn.call(api, query, { limit: 12 }),
+                    () => fn.call(api, { query, limit: 12 })
+                ];
+
+                for (const attempt of attempts) {
+                    try {
+                        const response = await attempt();
+                        const entities = collectSpotifyEntities(response);
+                        if (entities.length > 0) {
+                            const seen = new Set();
+                            return entities.filter(x => {
+                                if (!x.uri || seen.has(x.uri)) return false;
+                                seen.add(x.uri);
+                                return true;
+                            }).slice(0, 12);
+                        }
+                    } catch {}
+                }
+            }
+        }
+
+        return [];
+    }
+
     async function searchWithNativeFallback(query) {
-        // First try Spotify's authenticated Web API proxy. Some current
-        // Spotify/Spicetify builds no longer allow these calls, so failure is
-        // expected and must not break the rest of SpotifyDeck.
+        // Prefer Spotify's own native search service when the current desktop
+        // client exposes one through Platform.
+        try {
+            const result = await nativeSearch(query);
+            if (result.length > 0)
+                return result;
+        } catch (error) {
+            console.warn("[SpotifyDeck] Native search unavailable", error);
+        }
+
+        // Older/current desktop builds may still allow the authenticated Web
+        // API proxy. Keep it as a secondary path rather than a dependency.
         try {
             const result = await webApiSearch(query);
             if (result.length > 0)
@@ -144,8 +240,7 @@
             console.warn("[SpotifyDeck] Web API search unavailable", error);
         }
 
-        // Useful local fallback: playlists + current/recent tracks. This keeps
-        // search usable even when Spotify changes its internal Web API proxy.
+        // Last-resort local fallback: playlists + current/recent tracks.
         const q = query.trim().toLocaleLowerCase();
         const candidates = [];
 
