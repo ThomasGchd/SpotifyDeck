@@ -95,48 +95,113 @@
                              KeyDown="ResultsList_KeyDown">
                         <ListBox.ItemTemplate>
                             <DataTemplate>
-                                <Border Padding="12,9" Margin="0,2" CornerRadius="10" Background="#1F1F1F">
-                                    <StackPanel>
-                                        <TextBlock Text="{Binding Name}"
-                                                   Foreground="White"
-                                                   FontSize="14"
-                                                   FontWeight="SemiBold"
-                                                   TextTrimming="CharacterEllipsis"/>
-                                        <TextBlock Text="{Binding Subtitle}"
-                                                   Foreground="#9B9B9B"
-                                                   FontSize="11"
-                                                   Margin="0,2,0,0"
-                                                   TextTrimming="CharacterEllipsis"/>
-                                    </StackPanel>
+                                <Border Padding="9" Margin="0,2" CornerRadius="10" Background="#1F1F1F">
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="42"/>
+                                            <ColumnDefinition Width="10"/>
+                                            <ColumnDefinition Width="*"/>
+                                        </Grid.ColumnDefinitions>
+                                        <Border Width="42" Height="42" CornerRadius="7" ClipToBounds="True" Background="#292929">
+                                            <Image Source="{Binding ImageUrl}" Stretch="UniformToFill"/>
+                                        </Border>
+                                        <StackPanel Grid.Column="2" VerticalAlignment="Center">
+                                            <TextBlock Text="{Binding Name}"
+                                                       Foreground="White"
+                                                       FontSize="13"
+                                                       FontWeight="SemiBold"
+                                                       TextTrimming="CharacterEllipsis"/>
+                                            <TextBlock Text="{Binding Subtitle}"
+                                                       Foreground="#9B9B9B"
+                                                       FontSize="10"
+                                                       Margin="0,2,0,0"
+                                                       TextTrimming="CharacterEllipsis"/>
+                                        </StackPanel>
+                                    </Grid>
                                 </Border>
                             </DataTemplate>
                         </ListBox.ItemTemplate>
                     </ListBox>
                 </StackPanel>
 
-                <StackPanel Grid.Column="2">
-                    <TextBlock Text="Tes playlists"
-                               Foreground="White"
-                               FontSize="15"
-                               FontWeight="SemiBold"
-                               Margin="0,0,0,8"/>
-                    <ListBox x:Name="PlaylistsList"
-                             Background="Transparent"
-                             BorderThickness="0"
-                             Foreground="White"
-                             MouseDoubleClick="PlaylistsList_MouseDoubleClick">
-                        <ListBox.ItemTemplate>
-                            <DataTemplate>
-                                <Border Padding="12,9" Margin="0,2" CornerRadius="10" Background="#1F1F1F">
-                                    <TextBlock Text="{Binding Name}"
-                                               Foreground="White"
-                                               FontSize="13"
-                                               TextTrimming="CharacterEllipsis"/>
-                                </Border>
-                            </DataTemplate>
-                        </ListBox.ItemTemplate>
-                    </ListBox>
-                </StackPanel>
+                <Grid Grid.Column="2">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="*"/>
+                        <RowDefinition Height="14"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+
+                    <StackPanel>
+                        <TextBlock Text="Récemment écoutés"
+                                   Foreground="White"
+                                   FontSize="15"
+                                   FontWeight="SemiBold"
+                                   Margin="0,0,0,8"/>
+                        <ListBox x:Name="RecentList"
+                                 Background="Transparent"
+                                 BorderThickness="0"
+                                 Foreground="White"
+                                 MouseDoubleClick="RecentList_MouseDoubleClick">
+                            <ListBox.ItemTemplate>
+                                <DataTemplate>
+                                    <Border Padding="8" Margin="0,2" CornerRadius="10" Background="#1F1F1F">
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="38"/>
+                                                <ColumnDefinition Width="8"/>
+                                                <ColumnDefinition Width="*"/>
+                                            </Grid.ColumnDefinitions>
+                                            <Border Width="38" Height="38" CornerRadius="6" ClipToBounds="True" Background="#292929">
+                                                <Image Source="{Binding ImageUrl}" Stretch="UniformToFill"/>
+                                            </Border>
+                                            <StackPanel Grid.Column="2" VerticalAlignment="Center">
+                                                <TextBlock Text="{Binding Name}" Foreground="White" FontSize="12"
+                                                           FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/>
+                                                <TextBlock Text="{Binding Subtitle}" Foreground="#888" FontSize="10"
+                                                           TextTrimming="CharacterEllipsis"/>
+                                            </StackPanel>
+                                        </Grid>
+                                    </Border>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+                    </StackPanel>
+
+                    <StackPanel Grid.Row="2">
+                        <TextBlock Text="Tes playlists"
+                                   Foreground="White"
+                                   FontSize="15"
+                                   FontWeight="SemiBold"
+                                   Margin="0,0,0,8"/>
+                        <ListBox x:Name="PlaylistsList"
+                                 Background="Transparent"
+                                 BorderThickness="0"
+                                 Foreground="White"
+                                 MouseDoubleClick="PlaylistsList_MouseDoubleClick">
+                            <ListBox.ItemTemplate>
+                                <DataTemplate>
+                                    <Border Padding="8" Margin="0,2" CornerRadius="10" Background="#1F1F1F">
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="38"/>
+                                                <ColumnDefinition Width="8"/>
+                                                <ColumnDefinition Width="*"/>
+                                            </Grid.ColumnDefinitions>
+                                            <Border Width="38" Height="38" CornerRadius="6" ClipToBounds="True" Background="#292929">
+                                                <Image Source="{Binding ImageUrl}" Stretch="UniformToFill"/>
+                                            </Border>
+                                            <TextBlock Grid.Column="2" Text="{Binding Name}"
+                                                       VerticalAlignment="Center"
+                                                       Foreground="White"
+                                                       FontSize="12"
+                                                       TextTrimming="CharacterEllipsis"/>
+                                        </Grid>
+                                    </Border>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+                    </StackPanel>
+                </Grid>
             </Grid>
 
             <TextBlock x:Name="StatusText"
