@@ -20,7 +20,7 @@ public partial class ShortcutWindow : Window
         };
     }
 
-    private void CaptureBox_PreviewKeyDown(object sender, KeyEventArgs e)
+    private void CaptureBox_PreviewKeyDown(object sender, System.Windows.Input.KeyEventArgs e)
     {
         var key = e.Key == Key.System ? e.SystemKey : e.Key;
 
