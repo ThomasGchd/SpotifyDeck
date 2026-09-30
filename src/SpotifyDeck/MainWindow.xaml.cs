@@ -625,6 +625,8 @@ public partial class MainWindow : Window
         _trayIcon.DoubleClick += (_, _) => Dispatcher.Invoke(() => _ = ShowOverlayAsync());
     }
 
+    public void PrepareForShutdown() => _isShuttingDown = true;
+
     private async Task ShutdownAsync()
     {
         _isShuttingDown = true;
