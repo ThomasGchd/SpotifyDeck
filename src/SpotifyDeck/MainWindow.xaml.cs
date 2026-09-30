@@ -631,6 +631,7 @@ public partial class MainWindow : Window
         var menu = new System.Windows.Forms.ContextMenuStrip();
         var show = menu.Items.Add("Afficher SpotifyDeck");
         var update = menu.Items.Add("Rechercher une mise à jour");
+        var logs = menu.Items.Add("Ouvrir les logs");
         var autoStart = new System.Windows.Forms.ToolStripMenuItem("Démarrer avec Windows")
         {
             Checked = _autoStart.IsEnabled,
@@ -642,6 +643,18 @@ public partial class MainWindow : Window
 
         show.Click += (_, _) => Dispatcher.Invoke(() => _ = ShowOverlayAsync());
         update.Click += (_, _) => Dispatcher.Invoke(() => UpdateButton_Click(UpdateButton, new RoutedEventArgs()));
+        logs.Click += (_, _) =>
+        {
+            var directory = System.IO.Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "SpotifyDeck", "logs");
+            System.IO.Directory.CreateDirectory(directory);
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = directory,
+                UseShellExecute = true
+            });
+        };
         var syncingAutoStart = false;
         autoStart.CheckedChanged += (_, _) =>
         {
