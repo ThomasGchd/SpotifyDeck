@@ -13,13 +13,16 @@ public partial class MainWindow : Window
 {
     private const int HotkeyId = 0x5344;
     private const int WmHotkey = 0x0312;
+    private const int FallbackHotkeyId = 0x5345;
     private const uint ModAlt = 0x0001;
     private const uint ModControl = 0x0002;
+    private const uint ModShift = 0x0004;
+    private const uint ModNoRepeat = 0x4000;
 
-    [DllImport("user32.dll")]
+    [DllImport("user32.dll", SetLastError = true)]
     private static extern bool RegisterHotKey(IntPtr hWnd, int id, uint fsModifiers, uint vk);
 
-    [DllImport("user32.dll")]
+    [DllImport("user32.dll", SetLastError = true)]
     private static extern bool UnregisterHotKey(IntPtr hWnd, int id);
 
     private readonly SpicetifyBridgeService _bridge = new();
@@ -28,8 +31,8 @@ public partial class MainWindow : Window
     private readonly UpdateService _updates = new();
     private readonly DispatcherTimer _searchTimer;
 
-    private HwndSource? _source;
-    private IntPtr _handle;
+    private int _registeredHotkeyId;
+    private string _hotkeyLabel = "Ctrl + Alt + M";
     private System.Windows.Forms.NotifyIcon? _trayIcon;
 
     public ObservableCollection<SpotifyItem> Results { get; } = [];
@@ -65,16 +68,9 @@ public partial class MainWindow : Window
                 Hide();
         };
 
+        ComponentDispatcher.ThreadFilterMessage += OnThreadFilterMessage;
+        RegisterGlobalHotkey();
         CreateTrayIcon();
-
-        // Create the native HWND without ever flashing the overlay on screen.
-        _handle = new WindowInteropHelper(this).EnsureHandle();
-        _source = HwndSource.FromHwnd(_handle);
-        _source?.AddHook(WndProc);
-
-        var vkM = (uint)KeyInterop.VirtualKeyFromKey(Key.M);
-        if (!RegisterHotKey(_handle, HotkeyId, ModControl | ModAlt, vkM))
-            StatusText.Text = "Ctrl + Alt + M est déjà utilisé par une autre application.";
     }
 
     public async Task InitializeAsync()
@@ -91,24 +87,53 @@ public partial class MainWindow : Window
         }
     }
 
-    private IntPtr WndProc(
-        IntPtr hwnd,
-        int msg,
-        IntPtr wParam,
-        IntPtr lParam,
-        ref bool handled)
+    private void RegisterGlobalHotkey()
     {
-        if (msg == WmHotkey && wParam.ToInt32() == HotkeyId)
-        {
-            handled = true;
+        var vkM = (uint)KeyInterop.VirtualKeyFromKey(Key.M);
 
-            if (IsVisible)
-                Hide();
-            else
-                _ = ShowOverlayAsync();
+        if (RegisterHotKey(IntPtr.Zero, HotkeyId, ModControl | ModAlt | ModNoRepeat, vkM))
+        {
+            _registeredHotkeyId = HotkeyId;
+            _hotkeyLabel = "Ctrl + Alt + M";
+            return;
         }
 
-        return IntPtr.Zero;
+        var primaryError = Marshal.GetLastWin32Error();
+
+        // If another application owns Ctrl+Alt+M, keep SpotifyDeck usable
+        // rather than silently losing the global shortcut.
+        if (RegisterHotKey(IntPtr.Zero, FallbackHotkeyId, ModControl | ModShift | ModNoRepeat, vkM))
+        {
+            _registeredHotkeyId = FallbackHotkeyId;
+            _hotkeyLabel = "Ctrl + Shift + M";
+            StatusText.Text = "Ctrl + Alt + M est occupé · raccourci de secours : Ctrl + Shift + M.";
+            _ = AppLog.WriteAsync("hotkey",
+                $"Ctrl+Alt+M indisponible (Win32 {primaryError}). Secours Ctrl+Shift+M activé.");
+            return;
+        }
+
+        var fallbackError = Marshal.GetLastWin32Error();
+        _hotkeyLabel = "raccourci indisponible";
+        StatusText.Text = "Aucun raccourci global disponible · utilise l'icône SpotifyDeck.";
+        _ = AppLog.WriteAsync("hotkey",
+            $"Échec Ctrl+Alt+M (Win32 {primaryError}) et Ctrl+Shift+M (Win32 {fallbackError}).");
+    }
+
+    private void OnThreadFilterMessage(ref MSG msg, ref bool handled)
+    {
+        if (msg.message != WmHotkey)
+            return;
+
+        var id = msg.wParam.ToInt32();
+        if (id != HotkeyId && id != FallbackHotkeyId)
+            return;
+
+        handled = true;
+
+        if (IsVisible)
+            Hide();
+        else
+            _ = ShowOverlayAsync();
     }
 
     private async Task ShowOverlayAsync()
@@ -321,8 +346,8 @@ public partial class MainWindow : Window
         SearchBox.IsEnabled = connected;
 
         StatusText.Text = connected
-            ? "Spotify connecté · Ctrl + Alt + M pour afficher/masquer."
-            : "Connecte Spotify une fois, puis SpotifyDeck travaillera en arrière-plan.";
+            ? $"Spotify connecté · {_hotkeyLabel} pour afficher/masquer."
+            : $"Connecte Spotify une fois · raccourci : {_hotkeyLabel}.";
     }
 
     private void MainWindow_PreviewKeyDown(object sender, System.Windows.Input.KeyEventArgs e)
@@ -339,7 +364,7 @@ public partial class MainWindow : Window
         _trayIcon = new System.Windows.Forms.NotifyIcon
         {
             Icon = System.Drawing.SystemIcons.Information,
-            Text = "SpotifyDeck · Ctrl+Alt+M",
+            Text = $"SpotifyDeck · {_hotkeyLabel}",
             Visible = true
         };
 
@@ -358,10 +383,10 @@ public partial class MainWindow : Window
 
     private async Task ShutdownAsync()
     {
-        if (_handle != IntPtr.Zero)
-            UnregisterHotKey(_handle, HotkeyId);
+        if (_registeredHotkeyId != 0)
+            UnregisterHotKey(IntPtr.Zero, _registeredHotkeyId);
 
-        _source?.RemoveHook(WndProc);
+        ComponentDispatcher.ThreadFilterMessage -= OnThreadFilterMessage;
 
         if (_trayIcon is not null)
         {
