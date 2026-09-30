@@ -230,11 +230,20 @@
                     <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
 
-                <TextBlock x:Name="StatusText"
-                           VerticalAlignment="Center"
-                           Foreground="#777"
-                           FontSize="11"
-                           Text="SpotifyDeck prêt. · Entrée : lire sur Spotify"/>
+                <StackPanel VerticalAlignment="Center">
+                    <TextBlock x:Name="NowPlayingText"
+                               Foreground="#CFCFCF"
+                               FontSize="12"
+                               FontWeight="SemiBold"
+                               Text="Aucun morceau en lecture"
+                               TextTrimming="CharacterEllipsis"/>
+                    <TextBlock x:Name="StatusText"
+                               Margin="0,2,0,0"
+                               Foreground="#777"
+                               FontSize="10"
+                               Text="SpotifyDeck prêt. · Entrée : lire sur Spotify"
+                               TextTrimming="CharacterEllipsis"/>
+                </StackPanel>
 
                 <StackPanel Grid.Column="1" Orientation="Horizontal">
                     <Button x:Name="PreviousButton"
