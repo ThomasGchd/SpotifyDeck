@@ -5,10 +5,5 @@ public sealed record SpotifyItem(
     string Name,
     string Subtitle,
     string Uri,
-    SpotifyItemType Type);
-
-public enum SpotifyItemType
-{
-    Track,
-    Playlist
-}
+    string Type,
+    string? ImageUrl = null);
