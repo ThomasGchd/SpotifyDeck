@@ -13,7 +13,6 @@ public partial class MainWindow : Window
 {
     private const int HotkeyId = 0x5344;
     private const int WmHotkey = 0x0312;
-    private const int FallbackHotkeyId = 0x5345;
     private const uint ModAlt = 0x0001;
     private const uint ModControl = 0x0002;
     private const uint ModShift = 0x0004;
@@ -41,19 +40,19 @@ public partial class MainWindow : Window
 
     private readonly SpotifyAuthService _spotifyAuth = new();
     private readonly SpotifyApiService _spotifyApi;
-    private readonly SpicetifyBridgeService _bridge = new();
     private readonly SpotifyProcessService _spotify = new();
-    private readonly BridgeInstallerService _installer = new();
     private readonly UpdateService _updates = new();
     private readonly AutoStartService _autoStart = new();
     private readonly AppSettingsService _settingsService = new();
     private SpotifyDeckSettings _settings = new();
     private readonly DispatcherTimer _searchTimer;
+    private readonly DispatcherTimer _playbackTimer;
 
     private int _registeredHotkeyId;
     private int _searchVersion;
     private bool _isShuttingDown;
-    private string _hotkeyLabel = "Ctrl + Alt + M";
+    private bool _refreshingPlayback;
+    private string _hotkeyLabel = "Ctrl + Shift + M";
     private System.Windows.Forms.NotifyIcon? _trayIcon;
 
     public ObservableCollection<SpotifyItem> Results { get; } = [];
@@ -63,6 +62,9 @@ public partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
+
+        _settings = _settingsService.Load();
+        _spotifyAuth.SetClientId(_settings.SpotifyClientId);
         _spotifyApi = new SpotifyApiService(_spotifyAuth);
 
         ResultsList.ItemsSource = Results;
@@ -75,36 +77,22 @@ public partial class MainWindow : Window
         };
         _searchTimer.Tick += SearchTimer_Tick;
 
-        _bridge.ConnectionChanged += connected =>
+        _playbackTimer = new DispatcherTimer
         {
-            _ = Dispatcher.InvokeAsync(async () =>
-            {
-                var usable = _spotifyAuth.HasSession || connected;
-                UpdateConnectionUi(usable);
-
-                if (connected)
-                {
-                    try
-                    {
-                        var diagnostics = await _bridge.GetDiagnosticsAsync();
-                        if (!string.IsNullOrWhiteSpace(diagnostics))
-                            await AppLog.WriteAsync("bridge-diagnostics", diagnostics);
-                    }
-                    catch (Exception ex)
-                    {
-                        await AppLog.WriteAsync("bridge-diagnostics", ex);
-                    }
-                }
-
-                if (usable)
-                    await RefreshSpotifyUiAsync();
-            });
+            Interval = TimeSpan.FromSeconds(2)
         };
+        _playbackTimer.Tick += async (_, _) =>
+        {
+            if (!IsVisible || !_spotifyAuth.HasSession || _refreshingPlayback)
+                return;
+
+            await RefreshPlaybackAsync();
+        };
+        _playbackTimer.Start();
 
         PreviewKeyDown += MainWindow_PreviewKeyDown;
         Closing += MainWindow_Closing;
 
-        _settings = _settingsService.Load();
         ComponentDispatcher.ThreadFilterMessage += OnThreadFilterMessage;
         RegisterGlobalHotkey(_settings.Shortcut);
         CreateTrayIcon();
@@ -112,34 +100,11 @@ public partial class MainWindow : Window
 
     public async Task InitializeAsync()
     {
-        // Official Spotify OAuth/Web API is the production path.
-        // Keep the local bridge alive as the current working fallback while OAuth
-        // is not configured in release builds.
-        try
-        {
-            // Never run "spicetify apply" during ordinary SpotifyDeck startup:
-            // it restarts Spotify. Only refresh the extension when the bundled
-            // bridge actually changed.
-            if (!_spotifyAuth.HasSession && _installer.NeedsUpdate())
-            {
-                StatusText.Text = "Mise à jour du pont Spotify…";
-                var updated = await _installer.EnsureInstalledAsync();
-                await AppLog.WriteAsync(
-                    "bridge-update",
-                    updated
-                        ? "Bundled bridge refreshed. Spotify may need one restart."
-                        : "Bundled bridge refresh failed.");
-            }
+        var token = await _spotifyAuth.GetAccessTokenAsync();
+        var connected = !string.IsNullOrWhiteSpace(token);
 
-            await _bridge.StartAsync();
-        }
-        catch (Exception ex)
-        {
-            await AppLog.WriteAsync("bridge-startup", ex);
-        }
-
-        UpdateConnectionUi(_spotifyAuth.HasSession || _bridge.IsConnected);
-        if (_spotifyAuth.HasSession || _bridge.IsConnected)
+        UpdateConnectionUi(connected);
+        if (connected)
             await RefreshSpotifyUiAsync();
     }
 
@@ -170,14 +135,14 @@ public partial class MainWindow : Window
         {
             var error = Marshal.GetLastWin32Error();
             _hotkeyLabel = "raccourci indisponible";
-            StatusText.Text = $"{shortcut.Replace("+", " + ")} est déjà utilisé · choisis un autre raccourci.";
+            StatusText.Text = $"{FormatShortcut(shortcut)} est déjà utilisé · choisis un autre raccourci.";
             ShortcutText.Text = "Raccourci indisponible · clique sur Raccourci";
             _ = AppLog.WriteAsync("hotkey", $"Échec {shortcut} (Win32 {error}).");
             return false;
         }
 
         _registeredHotkeyId = HotkeyId;
-        _hotkeyLabel = shortcut.Replace("+", " + ");
+        _hotkeyLabel = FormatShortcut(shortcut);
         ShortcutText.Text = $"{_hotkeyLabel} · ta musique sans quitter le jeu";
         return true;
     }
@@ -200,17 +165,14 @@ public partial class MainWindow : Window
         _settings = _settings with { Shortcut = selected };
         _settingsService.Save(_settings);
         StatusText.Text = $"{_hotkeyLabel} enregistré.";
+
         if (_trayIcon is not null)
             _trayIcon.Text = $"SpotifyDeck · {_hotkeyLabel}";
     }
 
     private void OnThreadFilterMessage(ref MSG msg, ref bool handled)
     {
-        if (msg.message != WmHotkey)
-            return;
-
-        var id = msg.wParam.ToInt32();
-        if (id != HotkeyId && id != FallbackHotkeyId)
+        if (msg.message != WmHotkey || msg.wParam.ToInt32() != HotkeyId)
             return;
 
         handled = true;
@@ -230,14 +192,12 @@ public partial class MainWindow : Window
         SearchBox.Focus();
         Keyboard.Focus(SearchBox);
 
-        if (!_spotifyAuth.HasSession && !_bridge.IsConnected)
+        if (!_spotifyAuth.HasSession)
         {
-            StatusText.Text = "Spotify n'est pas encore connecté.";
             UpdateConnectionUi(false);
             return;
         }
 
-        await _spotify.EnsureRunningHiddenAsync();
         await RefreshSpotifyUiAsync();
     }
 
@@ -269,59 +229,61 @@ public partial class MainWindow : Window
     {
         ConnectButton.IsEnabled = false;
 
-        if (_spotifyAuth.IsConfigured)
+        try
         {
+            if (!_spotifyAuth.IsConfigured)
+            {
+                if (!ConfigureSpotify())
+                {
+                    UpdateConnectionUi(false);
+                    return;
+                }
+            }
+
             StatusText.Text = "Ouverture de Spotify dans ton navigateur…";
             var result = await _spotifyAuth.ConnectAsync();
             StatusText.Text = result.Message;
 
-            if (result.Success)
+            if (!result.Success)
             {
-                UpdateConnectionUi(true);
-                await _spotify.EnsureRunningHiddenAsync();
-                await RefreshSpotifyUiAsync();
-            }
-            else
-            {
-                ConnectButton.IsEnabled = true;
+                UpdateConnectionUi(false);
+                return;
             }
 
-            return;
-        }
-
-        // Temporary development fallback until the SpotifyDeck OAuth app id
-        // is injected in release builds.
-        StatusText.Text = "Connexion locale Spotify…";
-
-        var bridgeReady = await _installer.EnsureInstalledAsync();
-        if (!bridgeReady)
-        {
-            StatusText.Text = "Connexion Spotify indisponible sur cette build.";
-            ConnectButton.IsEnabled = true;
-            return;
-        }
-
-        // Applying Spicetify may restart Spotify. Give that restart time to
-        // settle before deciding whether the bridge is unavailable.
-        await Task.Delay(900);
-        await _spotify.EnsureRunningHiddenAsync();
-
-        for (var i = 0; i < 60 && !_bridge.IsConnected; i++)
-            await Task.Delay(250);
-
-        UpdateConnectionUi(_bridge.IsConnected);
-        if (_bridge.IsConnected)
-        {
+            UpdateConnectionUi(true);
+            await _spotify.EnsureRunningHiddenAsync();
             await RefreshSpotifyUiAsync();
         }
-        else
+        catch (Exception ex)
         {
-            StatusText.Text = "Spotify a redémarré mais le pont ne s'est pas reconnecté.";
-            await AppLog.WriteAsync(
-                "bridge-connect",
-                "Timed out waiting 15 seconds for the Spotify extension WebSocket.");
-            ConnectButton.IsEnabled = true;
+            await AppLog.WriteAsync("spotify-connect", ex);
+            StatusText.Text = "Connexion Spotify impossible. Consulte les logs.";
+            UpdateConnectionUi(false);
         }
+        finally
+        {
+            if (!_spotifyAuth.HasSession)
+                ConnectButton.IsEnabled = true;
+        }
+    }
+
+    private bool ConfigureSpotify()
+    {
+        var current = _settings.SpotifyClientId;
+        var dialog = new SpotifySetupWindow(current) { Owner = this };
+        if (dialog.ShowDialog() != true)
+            return false;
+
+        var changed = !string.Equals(current, dialog.ClientId, StringComparison.Ordinal);
+        if (changed)
+            _spotifyAuth.Disconnect();
+
+        _settings = _settings with { SpotifyClientId = dialog.ClientId };
+        _settingsService.Save(_settings);
+        _spotifyAuth.SetClientId(dialog.ClientId);
+
+        StatusText.Text = "Configuration Spotify enregistrée.";
+        return true;
     }
 
     private async void UpdateButton_Click(object sender, RoutedEventArgs e)
@@ -376,7 +338,9 @@ public partial class MainWindow : Window
         if (string.IsNullOrWhiteSpace(SearchBox.Text))
         {
             Results.Clear();
-            StatusText.Text = "Tape un titre, un artiste ou une playlist.";
+            StatusText.Text = _spotifyAuth.HasSession
+                ? "Tape un titre, un artiste ou une playlist."
+                : "Connecte Spotify pour rechercher.";
             return;
         }
 
@@ -387,7 +351,7 @@ public partial class MainWindow : Window
     {
         _searchTimer.Stop();
 
-        if ((!_spotifyAuth.HasSession && !_bridge.IsConnected) || string.IsNullOrWhiteSpace(SearchBox.Text))
+        if (!_spotifyAuth.HasSession || string.IsNullOrWhiteSpace(SearchBox.Text))
             return;
 
         var version = _searchVersion;
@@ -396,9 +360,7 @@ public partial class MainWindow : Window
 
         try
         {
-            var results = _spotifyAuth.HasSession
-                ? await _spotifyApi.SearchAsync(query)
-                : await _bridge.SearchAsync(query);
+            var results = await _spotifyApi.SearchAsync(query);
 
             if (version != _searchVersion)
                 return;
@@ -493,9 +455,7 @@ public partial class MainWindow : Window
         try
         {
             await _spotify.EnsureRunningHiddenAsync();
-            var ok = _spotifyAuth.HasSession
-                ? await _spotifyApi.PlayAsync(item)
-                : await _bridge.PlayAsync(item);
+            var ok = await _spotifyApi.PlayAsync(item);
 
             if (ok)
             {
@@ -519,12 +479,13 @@ public partial class MainWindow : Window
 
     private async Task RefreshPlaybackAsync()
     {
+        if (_refreshingPlayback)
+            return;
+
+        _refreshingPlayback = true;
         try
         {
-            var state = _spotifyAuth.HasSession
-                ? await _spotifyApi.GetPlaybackStateAsync()
-                : await _bridge.GetPlaybackStateAsync();
-
+            var state = await _spotifyApi.GetPlaybackStateAsync();
             NowPlayingText.Text = state is null
                 ? "Aucun morceau en lecture"
                 : $"{(state.IsPlaying ? "▶" : "⏸")} {state.Name} · {state.Artist}";
@@ -534,11 +495,15 @@ public partial class MainWindow : Window
             NowPlayingText.Text = "Lecture Spotify indisponible";
             await AppLog.WriteAsync("spotify-state", ex);
         }
+        finally
+        {
+            _refreshingPlayback = false;
+        }
     }
 
     private async Task LoadQuickAccessAsync()
     {
-        if (!_spotifyAuth.HasSession && !_bridge.IsConnected)
+        if (!_spotifyAuth.HasSession)
             return;
 
         try
@@ -554,9 +519,7 @@ public partial class MainWindow : Window
 
     private async Task LoadRecentAsync()
     {
-        var recent = _spotifyAuth.HasSession
-            ? await _spotifyApi.GetRecentAsync()
-            : await _bridge.GetRecentAsync();
+        var recent = await _spotifyApi.GetRecentAsync();
 
         Recent.Clear();
         foreach (var item in recent.Take(4))
@@ -565,9 +528,7 @@ public partial class MainWindow : Window
 
     private async Task LoadPlaylistsAsync()
     {
-        var playlists = _spotifyAuth.HasSession
-            ? await _spotifyApi.GetPlaylistsAsync()
-            : await _bridge.GetPlaylistsAsync();
+        var playlists = await _spotifyApi.GetPlaylistsAsync();
 
         Playlists.Clear();
         foreach (var playlist in playlists.Take(5))
@@ -575,37 +536,23 @@ public partial class MainWindow : Window
     }
 
     private async void PreviousButton_Click(object sender, RoutedEventArgs e) =>
-        await RunTransportAsync(
-            () => _spotifyApi.PreviousAsync(),
-            () => _bridge.PreviousAsync(),
-            "Morceau précédent.");
+        await RunTransportAsync(() => _spotifyApi.PreviousAsync(), "Morceau précédent.");
 
     private async void ToggleButton_Click(object sender, RoutedEventArgs e) =>
-        await RunTransportAsync(
-            () => _spotifyApi.TogglePlaybackAsync(),
-            () => _bridge.TogglePlaybackAsync(),
-            "Lecture / pause.");
+        await RunTransportAsync(() => _spotifyApi.TogglePlaybackAsync(), "Lecture / pause.");
 
     private async void NextButton_Click(object sender, RoutedEventArgs e) =>
-        await RunTransportAsync(
-            () => _spotifyApi.NextAsync(),
-            () => _bridge.NextAsync(),
-            "Morceau suivant.");
+        await RunTransportAsync(() => _spotifyApi.NextAsync(), "Morceau suivant.");
 
-    private async Task RunTransportAsync(
-        Func<Task<bool>> officialAction,
-        Func<Task<bool>> bridgeAction,
-        string successMessage)
+    private async Task RunTransportAsync(Func<Task<bool>> action, string successMessage)
     {
-        if (!_spotifyAuth.HasSession && !_bridge.IsConnected)
+        if (!_spotifyAuth.HasSession)
             return;
 
         try
         {
             await _spotify.EnsureRunningHiddenAsync();
-            var ok = _spotifyAuth.HasSession
-                ? await officialAction()
-                : await bridgeAction();
+            var ok = await action();
 
             StatusText.Text = ok
                 ? successMessage
@@ -631,11 +578,18 @@ public partial class MainWindow : Window
         NextButton.IsEnabled = connected;
 
         if (!connected)
+        {
             NowPlayingText.Text = "Aucun morceau en lecture";
+            Recent.Clear();
+            Playlists.Clear();
+            Results.Clear();
+        }
 
         StatusText.Text = connected
             ? $"Spotify connecté · {_hotkeyLabel} pour afficher/masquer."
-            : $"Connecte Spotify une fois · raccourci : {_hotkeyLabel}.";
+            : _spotifyAuth.IsConfigured
+                ? $"Connexion Spotify requise · raccourci : {_hotkeyLabel}."
+                : "Première connexion : configure ton Client ID Spotify.";
     }
 
     private void MainWindow_Closing(object? sender, System.ComponentModel.CancelEventArgs e)
@@ -643,8 +597,6 @@ public partial class MainWindow : Window
         if (_isShuttingDown)
             return;
 
-        // SpotifyDeck lives in the tray. Alt+F4 should hide the overlay rather
-        // than destroy the only window and leave an unusable tray process.
         e.Cancel = true;
         Hide();
     }
@@ -669,6 +621,7 @@ public partial class MainWindow : Window
 
         var menu = new System.Windows.Forms.ContextMenuStrip();
         var show = menu.Items.Add("Afficher SpotifyDeck");
+        var configure = menu.Items.Add("Configurer Spotify…");
         var update = menu.Items.Add("Rechercher une mise à jour");
         var logs = menu.Items.Add("Ouvrir les logs");
         var autoStart = new System.Windows.Forms.ToolStripMenuItem("Démarrer avec Windows")
@@ -681,6 +634,14 @@ public partial class MainWindow : Window
         var exit = menu.Items.Add("Quitter");
 
         show.Click += (_, _) => Dispatcher.Invoke(() => _ = ShowOverlayAsync());
+        configure.Click += (_, _) => Dispatcher.Invoke(() =>
+        {
+            if (ConfigureSpotify())
+            {
+                UpdateConnectionUi(false);
+                _ = ShowOverlayAsync();
+            }
+        });
         update.Click += (_, _) => Dispatcher.Invoke(() => UpdateButton_Click(UpdateButton, new RoutedEventArgs()));
         logs.Click += (_, _) =>
         {
@@ -694,6 +655,7 @@ public partial class MainWindow : Window
                 UseShellExecute = true
             });
         };
+
         var syncingAutoStart = false;
         autoStart.CheckedChanged += (_, _) =>
         {
@@ -709,6 +671,7 @@ public partial class MainWindow : Window
             syncingAutoStart = false;
             Dispatcher.Invoke(() => StatusText.Text = "Impossible de modifier le démarrage automatique.");
         };
+
         exit.Click += (_, _) => Dispatcher.Invoke(async () => await ShutdownAsync());
 
         _trayIcon.ContextMenuStrip = menu;
@@ -717,9 +680,10 @@ public partial class MainWindow : Window
 
     public void PrepareForShutdown() => _isShuttingDown = true;
 
-    private async Task ShutdownAsync()
+    private Task ShutdownAsync()
     {
         _isShuttingDown = true;
+        _playbackTimer.Stop();
 
         if (_registeredHotkeyId != 0)
             UnregisterHotKey(IntPtr.Zero, _registeredHotkeyId);
@@ -732,7 +696,10 @@ public partial class MainWindow : Window
             _trayIcon.Dispose();
         }
 
-        await _bridge.DisposeAsync();
         System.Windows.Application.Current.Shutdown();
+        return Task.CompletedTask;
     }
+
+    private static string FormatShortcut(string shortcut) =>
+        shortcut.Replace("+", " + ");
 }
