@@ -466,11 +466,58 @@ public partial class MainWindow : Window
             Playlists.Add(playlist);
     }
 
+    private async void PreviousButton_Click(object sender, RoutedEventArgs e) =>
+        await RunTransportAsync(
+            () => _spotifyApi.PreviousAsync(),
+            () => _bridge.PreviousAsync(),
+            "Morceau précédent.");
+
+    private async void ToggleButton_Click(object sender, RoutedEventArgs e) =>
+        await RunTransportAsync(
+            () => _spotifyApi.TogglePlaybackAsync(),
+            () => _bridge.TogglePlaybackAsync(),
+            "Lecture / pause.");
+
+    private async void NextButton_Click(object sender, RoutedEventArgs e) =>
+        await RunTransportAsync(
+            () => _spotifyApi.NextAsync(),
+            () => _bridge.NextAsync(),
+            "Morceau suivant.");
+
+    private async Task RunTransportAsync(
+        Func<Task<bool>> officialAction,
+        Func<Task<bool>> bridgeAction,
+        string successMessage)
+    {
+        if (!_spotifyAuth.HasSession && !_bridge.IsConnected)
+            return;
+
+        try
+        {
+            await _spotify.EnsureRunningHiddenAsync();
+            var ok = _spotifyAuth.HasSession
+                ? await officialAction()
+                : await bridgeAction();
+
+            StatusText.Text = ok
+                ? successMessage
+                : "Commande Spotify indisponible.";
+        }
+        catch (Exception ex)
+        {
+            StatusText.Text = "Commande Spotify impossible.";
+            await AppLog.WriteAsync("spotify-transport", ex);
+        }
+    }
+
     private void UpdateConnectionUi(bool connected)
     {
         ConnectButton.Content = connected ? "Spotify connecté" : "Connecter Spotify";
         ConnectButton.IsEnabled = !connected;
         SearchBox.IsEnabled = connected;
+        PreviousButton.IsEnabled = connected;
+        ToggleButton.IsEnabled = connected;
+        NextButton.IsEnabled = connected;
 
         StatusText.Text = connected
             ? $"Spotify connecté · {_hotkeyLabel} pour afficher/masquer."
