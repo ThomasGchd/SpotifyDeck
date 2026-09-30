@@ -26,6 +26,7 @@ public partial class MainWindow : Window
     private readonly SpotifyProcessService _spotify = new();
     private readonly BridgeInstallerService _installer = new();
     private readonly UpdateService _updates = new();
+    private readonly HadeService _hade = new();
     private readonly DispatcherTimer _searchTimer;
 
     private HwndSource? _source;
@@ -41,6 +42,7 @@ public partial class MainWindow : Window
 
         ResultsList.ItemsSource = Results;
         PlaylistsList.ItemsSource = Playlists;
+        HadeButton.Content = _hade.IsPaired ? "Hade connecté" : "Connecter Hade";
 
         _searchTimer = new DispatcherTimer
         {
@@ -207,6 +209,20 @@ public partial class MainWindow : Window
         }
     }
 
+    private void HadeButton_Click(object sender, RoutedEventArgs e)
+    {
+        var dialog = new HadePairWindow(_hade)
+        {
+            Owner = this
+        };
+
+        if (dialog.ShowDialog() == true)
+        {
+            HadeButton.Content = "Hade connecté";
+            StatusText.Text = "Hade connecté · Shift+Entrée ajoutera le morceau à la file Discord.";
+        }
+    }
+
     private void SearchBox_TextChanged(object sender, System.Windows.Controls.TextChangedEventArgs e)
     {
         _searchTimer.Stop();
@@ -251,7 +267,11 @@ public partial class MainWindow : Window
 
         if (e.Key == Key.Enter && Results.Count > 0)
         {
-            await PlayAsync(Results[0]);
+            if ((Keyboard.Modifiers & ModifierKeys.Shift) != 0)
+                await QueueToHadeAsync(Results[0]);
+            else
+                await PlayAsync(Results[0]);
+
             e.Handled = true;
         }
     }
@@ -266,7 +286,11 @@ public partial class MainWindow : Window
     {
         if (e.Key == Key.Enter && ResultsList.SelectedItem is SpotifyItem item)
         {
-            await PlayAsync(item);
+            if ((Keyboard.Modifiers & ModifierKeys.Shift) != 0)
+                await QueueToHadeAsync(item);
+            else
+                await PlayAsync(item);
+
             e.Handled = true;
         }
     }
@@ -275,6 +299,34 @@ public partial class MainWindow : Window
     {
         if (PlaylistsList.SelectedItem is SpotifyItem item)
             await PlayAsync(item);
+    }
+
+    private async Task QueueToHadeAsync(SpotifyItem item)
+    {
+        if (item.Type != "track")
+        {
+            StatusText.Text = "La file Discord accepte un morceau, pas une playlist.";
+            return;
+        }
+
+        if (!_hade.IsPaired)
+        {
+            StatusText.Text = "Connecte Hade d'abord.";
+            HadeButton_Click(HadeButton, new RoutedEventArgs());
+            return;
+        }
+
+        StatusText.Text = $"Ajout de {item.Name} à la file Discord…";
+        var result = await _hade.QueueAsync(item.Uri);
+        StatusText.Text = result.Message;
+
+        if (result.Success)
+        {
+            await Task.Delay(450);
+            Hide();
+            SearchBox.Clear();
+            Results.Clear();
+        }
     }
 
     private async Task PlayAsync(SpotifyItem item)
