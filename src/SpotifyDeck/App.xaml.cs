@@ -3,7 +3,7 @@ using System.Windows;
 
 namespace SpotifyDeck;
 
-public partial class App : Application
+public partial class App : System.Windows.Application
 {
     private Mutex? _mutex;
 
