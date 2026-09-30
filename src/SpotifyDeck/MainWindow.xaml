@@ -44,11 +44,6 @@
                 <StackPanel Grid.Column="1"
                             Orientation="Horizontal"
                             VerticalAlignment="Center">
-                    <Button x:Name="HadeButton"
-                            Padding="12,9"
-                            Margin="0,0,8,0"
-                            Click="HadeButton_Click"
-                            Content="Connecter Hade"/>
                     <Button x:Name="UpdateButton"
                             Padding="12,9"
                             Margin="0,0,8,0"
@@ -143,7 +138,7 @@
                        Margin="0,14,0,0"
                        Foreground="#777"
                        FontSize="11"
-                       Text="SpotifyDeck prêt. · Entrée : Spotify · Shift+Entrée : file Discord"/>
+                       Text="SpotifyDeck prêt. · Entrée : lire sur Spotify"/>
         </Grid>
     </Border>
 </Window>
