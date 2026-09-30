@@ -100,6 +100,14 @@ public partial class App : System.Windows.Application
         });
     }
 
+    protected override void OnSessionEnding(SessionEndingCancelEventArgs e)
+    {
+        if (MainWindow is MainWindow window)
+            window.PrepareForShutdown();
+
+        base.OnSessionEnding(e);
+    }
+
     protected override void OnExit(ExitEventArgs e)
     {
         try { _shutdownSignal?.Set(); } catch { }
