@@ -37,18 +37,36 @@ public sealed class SpicetifyBridgeService : IAsyncDisposable
                 return;
             }
 
-            _socket = await context.WebSockets.AcceptWebSocketAsync();
+            var socket = await context.WebSockets.AcceptWebSocketAsync();
+            var previous = Interlocked.Exchange(ref _socket, socket);
+
+            if (previous is { State: WebSocketState.Open })
+            {
+                try
+                {
+                    await previous.CloseAsync(
+                        WebSocketCloseStatus.NormalClosure,
+                        "replaced",
+                        CancellationToken.None);
+                }
+                catch { }
+            }
+
             ConnectionChanged?.Invoke(true);
 
             try
             {
-                await ReceiveLoopAsync(_socket);
+                await ReceiveLoopAsync(socket);
             }
             finally
             {
-                _socket?.Dispose();
-                _socket = null;
-                ConnectionChanged?.Invoke(false);
+                socket.Dispose();
+
+                if (ReferenceEquals(_socket, socket))
+                {
+                    _socket = null;
+                    ConnectionChanged?.Invoke(false);
+                }
             }
         });
 
