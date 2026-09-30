@@ -63,6 +63,39 @@ public sealed class SpotifyApiService
         return recent;
     }
 
+    public async Task<SpotifyPlaybackState?> GetPlaybackStateAsync()
+    {
+        var token = await _auth.GetAccessTokenAsync();
+        if (token is null) return null;
+
+        using var request = new HttpRequestMessage(HttpMethod.Get, "me/player/currently-playing");
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        using var response = await _http.SendAsync(request);
+        if (!response.IsSuccessStatusCode || response.StatusCode == System.Net.HttpStatusCode.NoContent)
+            return null;
+
+        using var doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        var root = doc.RootElement;
+        if (!root.TryGetProperty("item", out var item) || item.ValueKind != JsonValueKind.Object)
+            return null;
+
+        var artist = item.TryGetProperty("artists", out var artists)
+            ? string.Join(", ", artists.EnumerateArray().Select(x => x.GetProperty("name").GetString()))
+            : "";
+
+        string? image = null;
+        if (item.TryGetProperty("album", out var album) &&
+            album.TryGetProperty("images", out var images) &&
+            images.GetArrayLength() > 0)
+            image = images[0].GetProperty("url").GetString();
+
+        return new SpotifyPlaybackState(
+            item.TryGetProperty("name", out var name) ? name.GetString() ?? "" : "",
+            artist,
+            root.TryGetProperty("is_playing", out var isPlaying) && isPlaying.GetBoolean(),
+            image);
+    }
+
     public async Task<bool> PlayAsync(SpotifyItem item)
     {
         var token = await _auth.GetAccessTokenAsync();
