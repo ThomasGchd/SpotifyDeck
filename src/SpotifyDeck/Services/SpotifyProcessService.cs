@@ -8,61 +8,73 @@ public sealed class SpotifyProcessService
 {
     public async Task<bool> EnsureRunningAsync()
     {
-        if (Process.GetProcessesByName("Spotify").Length > 0)
-            return true;
-
+        // A Spotify background process is not proof that the desktop UI/device is ready.
+        // Always try to activate the installed client first; the Web API will decide
+        // whether its playback device is actually available afterwards.
         foreach (var executable in FindSpotifyExecutables())
         {
             try
             {
-                await AppLog.WriteAsync("spotify-launch", $"Launching Spotify from {executable}");
-                Process.Start(new ProcessStartInfo(executable)
-                {
-                    UseShellExecute = true
-                });
-
+                await AppLog.WriteAsync("spotify-launch", $"Activating Spotify from {executable}");
+                Process.Start(new ProcessStartInfo(executable) { UseShellExecute = true });
                 if (await WaitForSpotifyProcessAsync())
                     return true;
             }
             catch (Exception ex)
             {
-                await AppLog.WriteAsync("spotify-launch", ex);
+                await AppLog.WriteAsync("spotify-launch-exe", ex);
             }
         }
 
+        // Spotify's registered URI is the most reliable activation path for the
+        // Microsoft Store build and also works with the classic desktop build.
         try
         {
-            await AppLog.WriteAsync("spotify-launch", "Launching Spotify via spotify: URI.");
+            await AppLog.WriteAsync("spotify-launch", "Activating Spotify via spotify: URI.");
             Process.Start(new ProcessStartInfo("spotify:") { UseShellExecute = true });
-            if (await WaitForSpotifyProcessAsync())
-                return true;
+            await Task.Delay(1200);
+            return true;
         }
         catch (Exception ex)
         {
             await AppLog.WriteAsync("spotify-launch-uri", ex);
         }
 
-        await AppLog.WriteAsync("spotify-launch", "Spotify process was not detected after launch attempts.");
+        // Last resort for the Microsoft Store package.
+        try
+        {
+            await AppLog.WriteAsync("spotify-launch", "Activating Spotify via AppsFolder.");
+            Process.Start(new ProcessStartInfo(
+                "explorer.exe",
+                @"shell:AppsFolder\SpotifyAB.SpotifyMusic_zpdnekdrzrea0!Spotify")
+            {
+                UseShellExecute = true
+            });
+            await Task.Delay(1200);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            await AppLog.WriteAsync("spotify-launch-store", ex);
+        }
+
         return false;
     }
 
     private static IEnumerable<string> FindSpotifyExecutables()
     {
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-
         var candidates = new List<string?>
         {
             Path.Combine(
                 Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-                "Spotify", "Spotify.exe"),
-            Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                "Microsoft", "WindowsApps", "Spotify.exe")
+                "Spotify", "Spotify.exe")
         };
 
         try
         {
-            using var key = Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\App Paths\Spotify.exe");
+            using var key = Registry.CurrentUser.OpenSubKey(
+                @"Software\Microsoft\Windows\CurrentVersion\App Paths\Spotify.exe");
             candidates.Add(key?.GetValue(null) as string);
         }
         catch { }
@@ -80,9 +92,13 @@ public sealed class SpotifyProcessService
 
     private static async Task<bool> WaitForSpotifyProcessAsync()
     {
-        for (var i = 0; i < 40; i++)
+        for (var i = 0; i < 20; i++)
         {
-            if (Process.GetProcessesByName("Spotify").Length > 0)
+            if (Process.GetProcessesByName("Spotify").Any(p =>
+            {
+                try { return !p.HasExited; }
+                catch { return false; }
+            }))
                 return true;
 
             await Task.Delay(250);
