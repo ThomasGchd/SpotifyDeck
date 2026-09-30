@@ -25,6 +25,7 @@ public partial class MainWindow : Window
     private readonly SpicetifyBridgeService _bridge = new();
     private readonly SpotifyProcessService _spotify = new();
     private readonly BridgeInstallerService _installer = new();
+    private readonly UpdateService _updates = new();
     private readonly DispatcherTimer _searchTimer;
 
     private HwndSource? _source;
@@ -163,6 +164,49 @@ public partial class MainWindow : Window
         UpdateConnectionUi(_bridge.IsConnected);
     }
 
+    private async void UpdateButton_Click(object sender, RoutedEventArgs e)
+    {
+        UpdateButton.IsEnabled = false;
+        StatusText.Text = "Recherche d'une mise à jour…";
+
+        try
+        {
+            var update = await _updates.CheckAsync();
+            if (update is null)
+            {
+                StatusText.Text = "SpotifyDeck est à jour.";
+                return;
+            }
+
+            var answer = MessageBox.Show(
+                $"SpotifyDeck {update.Version} est disponible. Installer maintenant ?",
+                "Mise à jour SpotifyDeck",
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Information);
+
+            if (answer != MessageBoxResult.Yes)
+            {
+                StatusText.Text = $"Mise à jour {update.Version} disponible.";
+                return;
+            }
+
+            StatusText.Text = $"Téléchargement de SpotifyDeck {update.Version}…";
+            var started = await _updates.DownloadAndApplyAsync(update);
+
+            if (!started)
+            {
+                StatusText.Text = "La mise à jour n'a pas pu être préparée.";
+                return;
+            }
+
+            Application.Current.Shutdown();
+        }
+        finally
+        {
+            UpdateButton.IsEnabled = true;
+        }
+    }
+
     private void SearchBox_TextChanged(object sender, System.Windows.Controls.TextChangedEventArgs e)
     {
         _searchTimer.Stop();
@@ -293,9 +337,11 @@ public partial class MainWindow : Window
 
         var menu = new System.Windows.Forms.ContextMenuStrip();
         var show = menu.Items.Add("Afficher SpotifyDeck");
+        var update = menu.Items.Add("Rechercher une mise à jour");
         var exit = menu.Items.Add("Quitter");
 
         show.Click += (_, _) => Dispatcher.Invoke(() => _ = ShowOverlayAsync());
+        update.Click += (_, _) => Dispatcher.Invoke(() => UpdateButton_Click(UpdateButton, new RoutedEventArgs()));
         exit.Click += (_, _) => Dispatcher.Invoke(async () => await ShutdownAsync());
 
         _trayIcon.ContextMenuStrip = menu;
