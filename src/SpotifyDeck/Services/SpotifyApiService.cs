@@ -42,6 +42,27 @@ public sealed class SpotifyApiService
             .ToList();
     }
 
+    public async Task<IReadOnlyList<SpotifyItem>> GetRecentAsync()
+    {
+        var root = await GetJsonAsync("me/player/recently-played?limit=8");
+        if (root is null || !root.Value.TryGetProperty("items", out var items)) return [];
+
+        var recent = new List<SpotifyItem>();
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+
+        foreach (var item in items.EnumerateArray())
+        {
+            if (!item.TryGetProperty("track", out var track) || track.ValueKind != JsonValueKind.Object)
+                continue;
+
+            var mapped = MapTrack(track);
+            if (seen.Add(mapped.Id))
+                recent.Add(mapped);
+        }
+
+        return recent;
+    }
+
     public async Task<bool> PlayAsync(SpotifyItem item)
     {
         var token = await _auth.GetAccessTokenAsync();
