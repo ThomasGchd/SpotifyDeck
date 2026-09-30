@@ -141,7 +141,8 @@
                                  Background="Transparent"
                                  BorderThickness="0"
                                  Foreground="White"
-                                 MouseDoubleClick="RecentList_MouseDoubleClick">
+                                 MouseDoubleClick="RecentList_MouseDoubleClick"
+                                 KeyDown="QuickList_KeyDown">
                             <ListBox.ItemTemplate>
                                 <DataTemplate>
                                     <Border Padding="8" Margin="0,2" CornerRadius="10" Background="#1F1F1F">
@@ -177,7 +178,8 @@
                                  Background="Transparent"
                                  BorderThickness="0"
                                  Foreground="White"
-                                 MouseDoubleClick="PlaylistsList_MouseDoubleClick">
+                                 MouseDoubleClick="PlaylistsList_MouseDoubleClick"
+                                 KeyDown="QuickList_KeyDown">
                             <ListBox.ItemTemplate>
                                 <DataTemplate>
                                     <Border Padding="8" Margin="0,2" CornerRadius="10" Background="#1F1F1F">
