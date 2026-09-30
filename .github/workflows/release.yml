@@ -33,13 +33,26 @@ jobs:
             -p:Version=$version `
             -o publish
 
-      - name: Package
+      - name: Package portable updater payload
         shell: pwsh
         run: |
           Compress-Archive -Path publish\* -DestinationPath SpotifyDeck-win-x64.zip -Force
 
+      - name: Build installer
+        shell: pwsh
+        run: |
+          $version = "${{ github.ref_name }}".TrimStart("v")
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (!(Test-Path $iscc)) {
+            choco install innosetup --yes --no-progress
+          }
+          & $iscc "/DMyAppVersion=$version" "installer\SpotifyDeck.iss"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
       - name: Create GitHub release
         uses: softprops/action-gh-release@v2
         with:
-          files: SpotifyDeck-win-x64.zip
+          files: |
+            SpotifyDeck-win-x64.zip
+            installer-output/SpotifyDeck-Setup-win-x64.exe
           generate_release_notes: true
