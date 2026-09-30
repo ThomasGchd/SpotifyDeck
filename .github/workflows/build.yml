@@ -10,7 +10,34 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: "8.0.x"
-      - run: dotnet build src/SpotifyDeck/SpotifyDeck.csproj -c Release
+
+      - name: Build
+        run: dotnet build src/SpotifyDeck/SpotifyDeck.csproj -c Release
+
+      - name: Publish portable Windows build
+        if: github.event_name == 'push'
+        shell: pwsh
+        run: |
+          dotnet publish src/SpotifyDeck/SpotifyDeck.csproj `
+            -c Release `
+            -r win-x64 `
+            --self-contained true `
+            -p:PublishSingleFile=true `
+            -p:IncludeNativeLibrariesForSelfExtract=true `
+            -p:DebugType=None `
+            -p:Version=0.1.0 `
+            -o publish
+          Compress-Archive -Path publish\* -DestinationPath SpotifyDeck-portable-win-x64.zip -Force
+
+      - name: Upload portable test build
+        if: github.event_name == 'push'
+        uses: actions/upload-artifact@v4
+        with:
+          name: SpotifyDeck-portable-win-x64
+          path: SpotifyDeck-portable-win-x64.zip
+          if-no-files-found: error
+          retention-days: 14
