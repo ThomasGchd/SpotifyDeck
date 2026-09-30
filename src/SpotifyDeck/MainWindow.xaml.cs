@@ -31,6 +31,7 @@ public partial class MainWindow : Window
     private readonly SpotifyProcessService _spotify = new();
     private readonly BridgeInstallerService _installer = new();
     private readonly UpdateService _updates = new();
+    private readonly AutoStartService _autoStart = new();
     private readonly AppSettingsService _settingsService = new();
     private SpotifyDeckSettings _settings = new();
     private readonly DispatcherTimer _searchTimer;
@@ -452,10 +453,27 @@ public partial class MainWindow : Window
         var menu = new System.Windows.Forms.ContextMenuStrip();
         var show = menu.Items.Add("Afficher SpotifyDeck");
         var update = menu.Items.Add("Rechercher une mise à jour");
+        var autoStart = new System.Windows.Forms.ToolStripMenuItem("Démarrer avec Windows")
+        {
+            Checked = _autoStart.IsEnabled,
+            CheckOnClick = true
+        };
+        menu.Items.Add(autoStart);
+        menu.Items.Add(new System.Windows.Forms.ToolStripSeparator());
         var exit = menu.Items.Add("Quitter");
 
         show.Click += (_, _) => Dispatcher.Invoke(() => _ = ShowOverlayAsync());
         update.Click += (_, _) => Dispatcher.Invoke(() => UpdateButton_Click(UpdateButton, new RoutedEventArgs()));
+        autoStart.CheckedChanged += (_, _) =>
+        {
+            var wanted = autoStart.Checked;
+            if (_autoStart.SetEnabled(wanted))
+                return;
+
+            autoStart.CheckedChanged -= null;
+            autoStart.Checked = !wanted;
+            Dispatcher.Invoke(() => StatusText.Text = "Impossible de modifier le démarrage automatique.");
+        };
         exit.Click += (_, _) => Dispatcher.Invoke(async () => await ShutdownAsync());
 
         _trayIcon.ContextMenuStrip = menu;
