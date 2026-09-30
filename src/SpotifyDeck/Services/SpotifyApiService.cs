@@ -68,12 +68,76 @@ public sealed class SpotifyApiService
         var token = await _auth.GetAccessTokenAsync();
         if (token is null) return false;
 
-        using var request = new HttpRequestMessage(HttpMethod.Put, "me/player/play");
+        var deviceId = await WaitForPlaybackDeviceAsync(token);
+        if (string.IsNullOrWhiteSpace(deviceId))
+            return false;
+
+        using var request = new HttpRequestMessage(
+            HttpMethod.Put,
+            $"me/player/play?device_id={Uri.EscapeDataString(deviceId)}");
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+
         var body = item.Type == "track"
             ? JsonSerializer.Serialize(new { uris = new[] { item.Uri } })
             : JsonSerializer.Serialize(new { context_uri = item.Uri });
         request.Content = new StringContent(body, Encoding.UTF8, "application/json");
+
+        using var response = await _http.SendAsync(request);
+        return response.IsSuccessStatusCode;
+    }
+
+    private async Task<string?> WaitForPlaybackDeviceAsync(string token)
+    {
+        for (var attempt = 0; attempt < 16; attempt++)
+        {
+            var devices = await GetDevicesAsync(token);
+            var active = devices.FirstOrDefault(x => x.Active && !x.Restricted);
+            if (active is not null)
+                return active.Id;
+
+            var available = devices.FirstOrDefault(x => !x.Restricted);
+            if (available is not null)
+            {
+                if (await TransferPlaybackAsync(token, available.Id))
+                {
+                    await Task.Delay(250);
+                    return available.Id;
+                }
+            }
+
+            await Task.Delay(350);
+        }
+
+        return null;
+    }
+
+    private async Task<IReadOnlyList<SpotifyDevice>> GetDevicesAsync(string token)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Get, "me/player/devices");
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        using var response = await _http.SendAsync(request);
+        if (!response.IsSuccessStatusCode) return [];
+
+        using var doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        if (!doc.RootElement.TryGetProperty("devices", out var nodes)) return [];
+
+        return nodes.EnumerateArray()
+            .Select(x => new SpotifyDevice(
+                x.TryGetProperty("id", out var id) ? id.GetString() ?? "" : "",
+                x.TryGetProperty("is_active", out var active) && active.GetBoolean(),
+                x.TryGetProperty("is_restricted", out var restricted) && restricted.GetBoolean()))
+            .Where(x => !string.IsNullOrWhiteSpace(x.Id))
+            .ToList();
+    }
+
+    private async Task<bool> TransferPlaybackAsync(string token, string deviceId)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Put, "me/player");
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        request.Content = new StringContent(
+            JsonSerializer.Serialize(new { device_ids = new[] { deviceId }, play = false }),
+            Encoding.UTF8,
+            "application/json");
 
         using var response = await _http.SendAsync(request);
         return response.IsSuccessStatusCode;
@@ -128,3 +192,5 @@ public sealed class SpotifyApiService
             image);
     }
 }
+
+internal sealed record SpotifyDevice(string Id, bool Active, bool Restricted);
