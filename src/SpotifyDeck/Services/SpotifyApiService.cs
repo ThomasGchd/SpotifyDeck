@@ -86,6 +86,42 @@ public sealed class SpotifyApiService
         return response.IsSuccessStatusCode;
     }
 
+    public async Task<bool> TogglePlaybackAsync()
+    {
+        var state = await GetJsonAsync("me/player");
+        var isPlaying = state is { } root &&
+                        root.TryGetProperty("is_playing", out var playing) &&
+                        playing.GetBoolean();
+
+        return await SendPlaybackCommandAsync(
+            HttpMethod.Put,
+            isPlaying ? "me/player/pause" : "me/player/play");
+    }
+
+    public Task<bool> NextAsync() =>
+        SendPlaybackCommandAsync(HttpMethod.Post, "me/player/next");
+
+    public Task<bool> PreviousAsync() =>
+        SendPlaybackCommandAsync(HttpMethod.Post, "me/player/previous");
+
+    private async Task<bool> SendPlaybackCommandAsync(HttpMethod method, string path)
+    {
+        var token = await _auth.GetAccessTokenAsync();
+        if (token is null) return false;
+
+        var deviceId = await WaitForPlaybackDeviceAsync(token);
+        if (string.IsNullOrWhiteSpace(deviceId))
+            return false;
+
+        using var request = new HttpRequestMessage(
+            method,
+            $"{path}?device_id={Uri.EscapeDataString(deviceId)}");
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+
+        using var response = await _http.SendAsync(request);
+        return response.IsSuccessStatusCode;
+    }
+
     private async Task<string?> WaitForPlaybackDeviceAsync(string token)
     {
         for (var attempt = 0; attempt < 16; attempt++)
