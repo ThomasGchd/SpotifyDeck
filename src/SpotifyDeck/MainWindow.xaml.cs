@@ -81,7 +81,7 @@ public partial class MainWindow : Window
                 var usable = _spotifyAuth.HasSession || connected;
                 UpdateConnectionUi(usable);
                 if (usable)
-                    await LoadQuickAccessAsync();
+                    await RefreshSpotifyUiAsync();
             });
         };
 
@@ -113,7 +113,7 @@ public partial class MainWindow : Window
 
         UpdateConnectionUi(_spotifyAuth.HasSession || _bridge.IsConnected);
         if (_spotifyAuth.HasSession || _bridge.IsConnected)
-            await LoadQuickAccessAsync();
+            await RefreshSpotifyUiAsync();
     }
 
     private bool RegisterGlobalHotkey(string shortcut)
@@ -210,7 +210,7 @@ public partial class MainWindow : Window
         }
 
         await _spotify.EnsureRunningHiddenAsync();
-        await LoadQuickAccessAsync();
+        await RefreshSpotifyUiAsync();
     }
 
     private void PromoteOverlay()
@@ -251,7 +251,7 @@ public partial class MainWindow : Window
             {
                 UpdateConnectionUi(true);
                 await _spotify.EnsureRunningHiddenAsync();
-                await LoadQuickAccessAsync();
+                await RefreshSpotifyUiAsync();
             }
             else
             {
@@ -280,7 +280,7 @@ public partial class MainWindow : Window
 
         UpdateConnectionUi(_bridge.IsConnected);
         if (_bridge.IsConnected)
-            await LoadQuickAccessAsync();
+            await RefreshSpotifyUiAsync();
     }
 
     private async void UpdateButton_Click(object sender, RoutedEventArgs e)
@@ -465,6 +465,28 @@ public partial class MainWindow : Window
         }
     }
 
+    private Task RefreshSpotifyUiAsync() =>
+        Task.WhenAll(LoadQuickAccessAsync(), RefreshPlaybackAsync());
+
+    private async Task RefreshPlaybackAsync()
+    {
+        try
+        {
+            var state = _spotifyAuth.HasSession
+                ? await _spotifyApi.GetPlaybackStateAsync()
+                : await _bridge.GetPlaybackStateAsync();
+
+            NowPlayingText.Text = state is null
+                ? "Aucun morceau en lecture"
+                : $"{(state.IsPlaying ? "▶" : "⏸")} {state.Name} · {state.Artist}";
+        }
+        catch (Exception ex)
+        {
+            NowPlayingText.Text = "Lecture Spotify indisponible";
+            await AppLog.WriteAsync("spotify-state", ex);
+        }
+    }
+
     private async Task LoadQuickAccessAsync()
     {
         if (!_spotifyAuth.HasSession && !_bridge.IsConnected)
@@ -539,6 +561,9 @@ public partial class MainWindow : Window
             StatusText.Text = ok
                 ? successMessage
                 : "Commande Spotify indisponible.";
+
+            if (ok)
+                await RefreshPlaybackAsync();
         }
         catch (Exception ex)
         {
@@ -555,6 +580,9 @@ public partial class MainWindow : Window
         PreviousButton.IsEnabled = connected;
         ToggleButton.IsEnabled = connected;
         NextButton.IsEnabled = connected;
+
+        if (!connected)
+            NowPlayingText.Text = "Aucun morceau en lecture";
 
         StatusText.Text = connected
             ? $"Spotify connecté · {_hotkeyLabel} pour afficher/masquer."
