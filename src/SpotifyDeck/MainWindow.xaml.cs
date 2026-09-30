@@ -81,6 +81,21 @@ public partial class MainWindow : Window
             {
                 var usable = _spotifyAuth.HasSession || connected;
                 UpdateConnectionUi(usable);
+
+                if (connected)
+                {
+                    try
+                    {
+                        var diagnostics = await _bridge.GetDiagnosticsAsync();
+                        if (!string.IsNullOrWhiteSpace(diagnostics))
+                            await AppLog.WriteAsync("bridge-diagnostics", diagnostics);
+                    }
+                    catch (Exception ex)
+                    {
+                        await AppLog.WriteAsync("bridge-diagnostics", ex);
+                    }
+                }
+
                 if (usable)
                     await RefreshSpotifyUiAsync();
             });
