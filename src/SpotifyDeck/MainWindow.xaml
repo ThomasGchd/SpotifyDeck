@@ -35,7 +35,8 @@
                                Foreground="White"
                                FontSize="25"
                                FontWeight="SemiBold"/>
-                    <TextBlock Text="Ctrl + Alt + M · ta musique sans quitter le jeu"
+                    <TextBlock x:Name="ShortcutText"
+                               Text="Raccourci global · ta musique sans quitter le jeu"
                                Margin="0,4,0,0"
                                Foreground="#8C8C8C"
                                FontSize="12"/>
@@ -44,6 +45,11 @@
                 <StackPanel Grid.Column="1"
                             Orientation="Horizontal"
                             VerticalAlignment="Center">
+                    <Button x:Name="ShortcutButton"
+                            Padding="12,9"
+                            Margin="0,0,8,0"
+                            Click="ShortcutButton_Click"
+                            Content="Raccourci"/>
                     <Button x:Name="UpdateButton"
                             Padding="12,9"
                             Margin="0,0,8,0"
