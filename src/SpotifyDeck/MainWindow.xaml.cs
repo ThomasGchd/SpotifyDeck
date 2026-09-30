@@ -464,14 +464,19 @@ public partial class MainWindow : Window
 
         show.Click += (_, _) => Dispatcher.Invoke(() => _ = ShowOverlayAsync());
         update.Click += (_, _) => Dispatcher.Invoke(() => UpdateButton_Click(UpdateButton, new RoutedEventArgs()));
+        var syncingAutoStart = false;
         autoStart.CheckedChanged += (_, _) =>
         {
+            if (syncingAutoStart)
+                return;
+
             var wanted = autoStart.Checked;
             if (_autoStart.SetEnabled(wanted))
                 return;
 
-            autoStart.CheckedChanged -= null;
+            syncingAutoStart = true;
             autoStart.Checked = !wanted;
+            syncingAutoStart = false;
             Dispatcher.Invoke(() => StatusText.Text = "Impossible de modifier le démarrage automatique.");
         };
         exit.Click += (_, _) => Dispatcher.Invoke(async () => await ShutdownAsync());
