@@ -467,7 +467,7 @@ public partial class MainWindow : Window
                 return;
             }
 
-            StatusText.Text = "Aucun lecteur Spotify disponible pour lancer ce morceau.";
+            StatusText.Text = "Spotify est ouvert, mais la lecture n'a pas été confirmée.";
         }
         catch (Exception ex)
         {
